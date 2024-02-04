@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<infrastructure>
+    <node>
+        <id>cloud-cpu:0</id>
+        <type>cloud-cpu</type>
+        <Ncore>128</Ncore>
+        <mainMemory>128</mainMemory>
+    </node>
+    <node>
+        <id>cloud-cpu:1</id>
+        <type>cloud-cpu</type>
+        <Ncore>128</Ncore>
+        <mainMemory>128</mainMemory>
+    </node>
+    <node>
+        <id>edge-cpu:0</id>
+        <type>edge-cpu</type>
+        <Ncore>8</Ncore>
+        <mainMemory>8</mainMemory>
+    </node>
+    <node>
+        <id>edge-cpu:1</id>
+        <type>edge-cpu</type>
+        <Ncore>8</Ncore>
+        <mainMemory>8</mainMemory>
+    </node>
+    <node>
+        <id>edge-cpu:2</id>
+        <type>edge-cpu</type>
+        <Ncore>8</Ncore>
+        <mainMemory>8</mainMemory>
+    </node>
+    <node>
+        <id>edge-cpu:3</id>
+        <type>edge-cpu</type>
+        <Ncore>8</Ncore>
+        <mainMemory>8</mainMemory>
+    </node>
+</infrastructure>

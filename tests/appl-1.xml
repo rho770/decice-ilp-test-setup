@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<application>
+    <container>
+        <id>global:0</id>
+        <type>global-service</type>
+        <nodeType>cloud-cpu</nodeType>
+        <Ncore>1</Ncore>
+        <mainMemory>1</mainMemory>
+    </container>
+    <container>
+        <id>intersect:0</id>
+        <type>intersect-control</type>
+        <nodeType>edge-cpu</nodeType>
+        <Ncore>4</Ncore>
+        <mainMemory>3</mainMemory>
+    </container>
+    <container>
+        <id>intersect:1</id>
+        <type>intersect-control</type>
+        <nodeType>edge-cpu</nodeType>
+        <Ncore>4</Ncore>
+        <mainMemory>3</mainMemory>
+    </container>
+</application>
