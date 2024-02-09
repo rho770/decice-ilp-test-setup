@@ -30,6 +30,7 @@ class Application:
         domNodeList = dom.getElementsByTagName("container")
         for domNode in domNodeList:
             container = Container()
+            attr = {}
             for domChild in domNode.childNodes:
                 if domChild.nodeType == domNode.ELEMENT_NODE:
                     key = domChild.nodeName
@@ -41,7 +42,8 @@ class Application:
                     elif key == 'nodeType':
                         container.nodeType = value
                     else:
-                        container.attr[key] = value
+                        attr[key] = value
+            container.attr = attr.copy()
             self.containerList.append(container)
 
     def __init__(self, file):

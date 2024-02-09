@@ -5,15 +5,18 @@
 Classes and methods for interfacing with Pulp
 """
 
+import os
+import pulp as P
 
 class PulpInterface:
     script = []
     varList = []
+    linTermList = []
 
     def __init__(self):
         self.script.append("import pulp as P\n")
 
-    def print(self):
+    def print_lines(self):
         for line in self.script:
             print(line)
 
@@ -24,8 +27,32 @@ class PulpInterface:
         self.varList.append(name)
         self.script.append("%s = P.LpVariable(\"%s\", %d, %d)" % (name, name, min, max))
 
-    def addConstraint(self, s):
-        self.script.append("prob += %s" % (s))
+    def addVarBinary(self, name):
+        self.varList.append(name)
+        self.script.append("%s = P.LpVariable(\"%s\", cat=\"Binary\")" % (name, name))
+
+    def resetLinTerm(self):
+        self.linTermList = []
+
+    def addLinTerm(self, a, x):
+        self.linTermList.append([a, x])
+
+    def addConstraint(self, rel, rhs):
+        if (len(self.linTermList) > 0):
+            s = 'prob += '
+            for i in range(len(self.linTermList)):
+                if i < len(self.linTermList)-1:
+                    s += "%s * %s + " % (
+                            self.linTermList[i][0],
+                            self.linTermList[i][1]
+                    )
+                else:
+                    s += "%s * %s %s %s" % (
+                            self.linTermList[i][0],
+                            self.linTermList[i][1],
+                            rel, rhs
+                    )
+            self.script.append(s)
 
     def addComment(self, s):
         self.script.append("# %s" % (s))

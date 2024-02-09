@@ -41,15 +41,14 @@ for type in ['cloud-cpu', 'edge-cpu']:
                 if infra.nodeList[iNode].type == type:
                     name = 'X_' + str(iContainer) + '_' + str(iNode)
                     varList.append(
-                          { "container": appl.containerList[iContainer],
-                            "node": infra.nodeList[iNode],
-                            "name": name
-                          }
+                            {"container": appl.containerList[iContainer],
+                             "node": infra.nodeList[iNode],
+                             "name": name}
                         )
                     pulpInf.addComment("container=%s, node=%s" %
                         (appl.containerList[iContainer].id,
                          infra.nodeList[iNode].id))
-                    pulpInf.addVar(name, 0, 1)
+                    pulpInf.addVarBinary(name)
 
 # Initialise solver
 
@@ -58,40 +57,47 @@ pulpInf.defProblem("experiment-1")
 
 # Add constraints
 
+# Constraint 1: The pod can not be assigned to more than one node
+
 pulpInf.addComment(
     "Constraint: All containers must be scheduled on exactly one node")
 
 for container in appl.containerList:
-    list = []
+    pulpInf.resetLinTerm()
     for var in varList:
         if id(container) == id(var["container"]):
-            list.append(var)
-    if len(list) > 0:
-        s = ''
-        for i in range(len(list)):
-            if i < len(list)-1:
-                s += "%s + " % (list[i]["name"])
-            else:
-                s += "%s == 1" % (list[i]["name"])
-        pulpInf.addConstraint(s)
+            pulpInf.addLinTerm(1, var["name"])
+    pulpInf.addConstraint("==", 1)
+
+# Constraint 2: The total resource requirements of pods executed on the same
+# node cannot exceed the available resources of the node. ---Cpu cores
 
 pulpInf.addComment("Constraint: Do not allocate more cores than available")
 
 for node in infra.nodeList:
-    list = []
+    pulpInf.resetLinTerm()
     for var in varList:
         if id(node) == id(var["node"]):
-            list.append(var)
-    if len(list) > 0:
-        s = ''
-        for i in range(len(list)):
-            if i < len(list)-1:
-                s += "%s + " % (list[i]["name"])
-            else:
-                s += "%s <= %s" % (list[i]["name"], node.attr["Ncore"])
-        pulpInf.addConstraint(s)
+            pulpInf.addLinTerm(
+                    var["container"].attr["Ncore"], var["name"]
+                )
+    pulpInf.addConstraint("<=", node.attr["Ncore"])
 
-# Constaint: Do not allocate more memory than available
+# Constaint 3: The total resource requirements of pods executed on the same
+# node cannot exceed the available resources of the node. ---main Memory
+
+pulpInf.addComment("Constraint: Do not allocate more mainMemory than available")
+
+for node in infra.nodeList:
+    pulpInf.resetLinTerm()
+    for var in varList:
+        if id(node) == id(var["node"]):
+            pulpInf.addLinTerm(
+                    var["container"].attr["mainMemory"], var["name"]
+                )
+    pulpInf.addConstraint("<=", node.attr["mainMemory"])
+
+# Constraint 4: Add latency constraints
 
 # FIXME: to be done
 
@@ -129,4 +135,4 @@ pulpInf.prValues()
 # Print Pulp script
 #------------------------------------------------------------------------------
 
-pulpInf.print()
+pulpInf.print_lines()

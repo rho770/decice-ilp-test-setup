@@ -13,3 +13,6 @@ infra = I.Infrastructure(BASEDIR + '/infra-1.xml')
 print('Node list:')
 for node in infra.nodeList:
     print('\tid=\"%s\"' % (node.id))
+    print('\t\ttype=\"%s\"' % (node.type))
+    for key in node.attr:
+        print('\t\t%s=\"%s\"' % (key, node.attr[key]))

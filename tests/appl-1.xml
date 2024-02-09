@@ -18,7 +18,7 @@
         <id>intersect:1</id>
         <type>intersect-control</type>
         <nodeType>edge-cpu</nodeType>
-        <Ncore>4</Ncore>
-        <mainMemory>3</mainMemory>
+        <Ncore>8</Ncore>
+        <mainMemory>6</mainMemory>
     </container>
 </application>

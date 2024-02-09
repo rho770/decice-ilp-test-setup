@@ -29,6 +29,7 @@ class Infrastructure:
         domNodeList = dom.getElementsByTagName("node")
         for domNode in domNodeList:
             node = Node()
+            attr = {}
             for domChild in domNode.childNodes:
                 if domChild.nodeType == domNode.ELEMENT_NODE:
                     key = domChild.nodeName
@@ -38,7 +39,8 @@ class Infrastructure:
                     elif key == 'type':
                         node.type = value
                     else:
-                        node.attr[key] = value
+                        attr[key] = value
+            node.attr = attr.copy()
             self.nodeList.append(node)
 
     def __init__(self, file):
