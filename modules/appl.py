@@ -9,18 +9,18 @@ import xml.dom.minidom as minidom
 
 
 class Container:
-    id = None
-    type = None
-    nodeType = None
-    attr = {}
+
+    def __init__(self):
+        self.id = None
+        self.type = None
+        self.nodeType = None
+        self.attr = {}
 
     def toXML(self):
         return "FIXME: TO BE IMPLEMENTED"
 
 
 class Application:
-    containerList = []
-
     def nContainer(self):
         return len(self.containerList)
 
@@ -30,7 +30,6 @@ class Application:
         domNodeList = dom.getElementsByTagName("container")
         for domNode in domNodeList:
             container = Container()
-            attr = {}
             for domChild in domNode.childNodes:
                 if domChild.nodeType == domNode.ELEMENT_NODE:
                     key = domChild.nodeName
@@ -42,9 +41,9 @@ class Application:
                     elif key == 'nodeType':
                         container.nodeType = value
                     else:
-                        attr[key] = value
-            container.attr = attr.copy()
+                        container.attr[key] = value
             self.containerList.append(container)
 
     def __init__(self, file):
+        self.containerList = []
         self.parseXML(file)

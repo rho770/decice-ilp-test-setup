@@ -9,17 +9,16 @@ import xml.dom.minidom as minidom
 
 
 class Node:
-    id = None
-    type = None
-    attr = {}
+    def __init__(self):
+        self.id = None
+        self.type = None
+        self.attr = {}
 
     def toXML(self):
         return ""
 
 
 class Infrastructure:
-    nodeList = []
-
     def nNode(self):
         return len(self.nodeList)
 
@@ -44,4 +43,5 @@ class Infrastructure:
             self.nodeList.append(node)
 
     def __init__(self, file):
+        self.nodeList = []
         self.parseXML(file)
