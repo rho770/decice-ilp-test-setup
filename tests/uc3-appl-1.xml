@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<application>
+    <container>
+        <id>map</id>
+        <type>mp:0</type>
+        <nodeType>cloud-gpu</nodeType>
+        <Ncore>16</Ncore>
+        <Ngpu>1</Ngpu>
+        <mainMemory>4</mainMemory>
+    </container>
+    <container>
+        <id>pg:0</id>
+        <type>plan-global</type>
+        <nodeType>cloud-cpu</nodeType>
+        <Ncore>8</Ncore>
+        <mainMemory>3</mainMemory>
+    </container>
+    <container>
+        <id>pl:0</id>
+        <type>plan-local</type>
+        <nodeType>edge-cpu</nodeType>
+        <Ncore>4</Ncore>
+        <mainMemory>2</mainMemory>
+    </container>
+    <latency>
+        <id>0</id>
+        <containerId>pg:0</containerId>
+        <containerId>pl:0</containerId>
+        <I>1</I>                            <!-- Mbit -->
+        <limit>13.3</limit>                  <!-- ms -->
+    </latency>
+</application>

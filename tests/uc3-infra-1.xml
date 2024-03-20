@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<infrastructure>
+    <!-- Cloud -->
+    <node>
+        <id>cloud-cpu:0</id>
+        <type>cloud-cpu</type>
+        <Ncore>128</Ncore>
+        <mainMemory>128</mainMemory>
+        <clock>2</clock>                <!-- Clock frequency in GHz -->
+        <IPC>6</IPC>
+        <Ngpu>0</Ngpu>
+    </node>
+    <node>
+        <id>cloud-cpu:1</id>
+        <type>cloud-cpu</type>
+        <Ncore>128</Ncore>
+        <mainMemory>128</mainMemory>
+        <clock>2</clock>
+        <IPC>6</IPC>
+        <Ngpu>0</Ngpu>
+    </node>
+    <node>
+        <id>cloud-gpu:1</id>
+        <type>cloud-gpu</type>
+        <Ncore>128</Ncore>
+        <mainMemory>128</mainMemory>
+        <clock>2</clock>
+        <IPC>6</IPC>
+        <Ngpu>1</Ngpu>
+    </node>
+    <!-- Edge -->
+    <node>
+        <id>edge-cpu:0</id>
+        <type>edge-cpu</type>
+        <Ncore>8</Ncore>
+        <mainMemory>16</mainMemory>
+        <clock>1</clock>
+        <IPC>4</IPC>
+    </node>
+    <!-- Network -->
+    <connection>
+        <endPoint>cloud-cpu:0</endPoint>
+        <endPoint>cloud-gpu:0</endPoint>
+        <lat>10</lat>                       <!-- Startup latency in musec -->
+        <bw>10000</bw>                      <!-- Bandwidth in Mbit/s -->
+    </connection>
+    <connection>
+        <endPoint>cloud-cpu:0</endPoint>
+        <endPoint>edge-cpu:0</endPoint>
+        <lat>20</lat>
+        <bw>100</bw>
+    </connection>
+    <connection>
+        <endPoint>cloud-gpu:0</endPoint>
+        <endPoint>edge-cpu:0</endPoint>
+        <lat>20</lat>
+        <bw>100</bw>
+    </connection>
+</infrastructure>

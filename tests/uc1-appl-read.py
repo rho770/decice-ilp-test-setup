@@ -8,7 +8,7 @@ sys.path.append(BASEDIR + '/../modules')
 
 import appl as A
 
-appl = A.Application(BASEDIR + '/appl-1.xml')
+appl = A.Application(BASEDIR + '/uc1-appl-1.xml')
 
 print('Container list:')
 for container in appl.containerList:

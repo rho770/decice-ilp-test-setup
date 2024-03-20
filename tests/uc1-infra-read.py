@@ -8,7 +8,7 @@ sys.path.append(BASEDIR + '/../modules')
 
 import infra as I
 
-infra = I.Infrastructure(BASEDIR + '/infra-1.xml')
+infra = I.Infrastructure(BASEDIR + '/uc1-infra-1.xml')
 
 print('Node list:')
 for node in infra.nodeList:

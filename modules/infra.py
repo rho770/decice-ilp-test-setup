@@ -18,6 +18,17 @@ class Node:
         return ""
 
 
+class Connection:
+    def __init__(self):
+        self.endPoint = []
+        self.lat = None
+        self.bw = None
+        self.attr = {}
+
+    def toXML(self):
+        return ""
+
+
 class Infrastructure:
     def nNode(self):
         return len(self.nodeList)
@@ -28,7 +39,6 @@ class Infrastructure:
         domNodeList = dom.getElementsByTagName("node")
         for domNode in domNodeList:
             node = Node()
-            attr = {}
             for domChild in domNode.childNodes:
                 if domChild.nodeType == domNode.ELEMENT_NODE:
                     key = domChild.nodeName
@@ -38,10 +48,30 @@ class Infrastructure:
                     elif key == 'type':
                         node.type = value
                     else:
-                        attr[key] = value
-            node.attr = attr.copy()
+                        node.attr[key] = value
             self.nodeList.append(node)
+
+        domNodeList = dom.getElementsByTagName("connection")
+        for domNode in domNodeList:
+            connection = Connection()
+            for domChild in domNode.childNodes:
+                if domChild.nodeType == domNode.ELEMENT_NODE:
+                    key = domChild.nodeName
+                    value = domChild.firstChild.data
+                    if key == 'endPoint':
+                        connection.endPoint.append(value)
+                    elif key == 'lat':
+                        connection.lat = float(value)
+                    elif key == 'bw':
+                        connection.bw = float(value)
+                    else:
+                        connection.attr[key] = value
+            if (len(connection.endPoint) != 2):
+                print("Parse error")
+                exit(1)
+            self.connectionList.append(connection)
 
     def __init__(self, file):
         self.nodeList = []
+        self.connectionList = []
         self.parseXML(file)

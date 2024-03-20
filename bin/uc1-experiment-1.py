@@ -17,8 +17,8 @@ import pulpintf
 #------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--appl', dest='applCfg', type=str)
-parser.add_argument('--infra', dest='infraCfg', type=str)
+parser.add_argument('--appl', dest='applCfg', type=str, required=True)
+parser.add_argument('--infra', dest='infraCfg', type=str, required=True)
 args = parser.parse_args()
 
 appl = appl.Application(args.applCfg)
@@ -53,11 +53,9 @@ for type in ['cloud-cpu', 'edge-cpu']:
 # Initialise solver
 
 pulpInf.addComment("Solver setup:")
-pulpInf.defProblem("experiment-1")
+pulpInf.defProblem("uc1-experiment-1")
 
 # Add constraints
-
-# Constraint 1: The pod can not be assigned to more than one node
 
 pulpInf.addComment(
     "Constraint: All containers must be scheduled on exactly one node")
@@ -69,7 +67,7 @@ for container in appl.containerList:
             pulpInf.addLinTerm(1, var["name"])
     pulpInf.addConstraint("==", 1)
 
-# Constraint 2: The total resource requirements of pods executed on the same
+# Constraint: The total resource requirements of pods executed on the same
 # node cannot exceed the available resources of the node. ---Cpu cores
 
 pulpInf.addComment("Constraint: Do not allocate more cores than available")
@@ -83,7 +81,7 @@ for node in infra.nodeList:
                 )
     pulpInf.addConstraint("<=", node.attr["Ncore"])
 
-# Constaint 3: The total resource requirements of pods executed on the same
+# Constaint: The total resource requirements of pods executed on the same
 # node cannot exceed the available resources of the node. ---main Memory
 
 pulpInf.addComment("Constraint: Do not allocate more mainMemory than available")
@@ -97,7 +95,7 @@ for node in infra.nodeList:
                 )
     pulpInf.addConstraint("<=", node.attr["mainMemory"])
 
-# Constraint 4: Add latency constraints
+# Constraint: Latency constraints (TO BE DONE)
 
 # FIXME: to be done
 
