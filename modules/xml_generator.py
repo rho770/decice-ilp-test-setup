@@ -104,8 +104,19 @@ def create_infrastructure_xml(cloud_nodes, edge_nodes, num_regions,selected_regi
 
     # Create the tree and write it to a file
     tree = ET.ElementTree(infrastructure)
-    output_dir = os.path.join("../data/input", directory)
-    filepath = os.path.join(output_dir, filename)
+    input_dir = os.path.join("../data/input", directory)
+    output_dir = os.path.join("../data/output", directory)
+    
+    # Create the directories for input and output files.
+    if os.path.exists(input_dir):
+        print(f"The directory '{input_dir}' already exists.")
+    else:
+        print(f"The directory '{input_dir}' does not exist.")
+        os.makedirs(input_dir)
+        os.makedirs(output_dir)
+        print(f"Directories '{input_dir}' and {output_dir} created successfully.")
+    
+    filepath = os.path.join(input_dir, filename)
     tree.write(filepath, encoding="utf-8", xml_declaration=True)
 
     print(f"XML file '{filename}' created with {cloud_nodes} cloud nodes and {edge_nodes} edge nodes distributed across {num_regions} regions.")
@@ -127,8 +138,8 @@ def create_application_xml(cloud_containers, edge_containers, selected_regions, 
 
     # Create the tree and write it to a file
     tree = ET.ElementTree(application)
-    output_dir = os.path.join("../data/input", directory)
-    filepath = os.path.join(output_dir, filename)
+    input_dir = os.path.join("../data/input", directory)
+    filepath = os.path.join(input_dir, filename)
     tree.write(filepath, encoding="utf-8", xml_declaration=True)
 
     print(f"XML file '{filename}' created with {cloud_containers} cloud containers and {edge_containers} edge containers.")
@@ -174,9 +185,11 @@ def generate_container(container_id, node_type, selected_regions, ncore=4, memor
     return container
 
 def configuration(cloud_nodes,edge_nodes, cloud_containers, edge_containers, selected_regions, p_e):
+
     infra_file = f"Ncloud_{cloud_nodes}_Nedge_{edge_nodes}_E{selected_regions}.xml"
     appl_file = f"Pcloud_{cloud_containers}_Pedge_{edge_containers}_E{selected_regions}_pe{p_e}.xml"
     case_dir = f'Ncloud_{cloud_nodes}_Nedge_{edge_nodes}'
+    
     return infra_file, appl_file, case_dir
     
 
