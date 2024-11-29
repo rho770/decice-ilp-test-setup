@@ -113,3 +113,13 @@ class Infrastructure:
         Ncpu_edge  = 4
         return Ncpu_cloud, Ncpu_edge
     
+    def count_nodes(self):
+        cloud_count, edge_count = 0, 0
+        for node in self.nodeList:
+            if 'cloud' in node.type:
+                cloud_count += 1
+            elif 'edge' in node.type:
+                edge_count += 1
+        return cloud_count, edge_count
+
+    
