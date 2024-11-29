@@ -110,14 +110,17 @@ w_cost = ((N_cpu_c/ (2*n_cpu_c) )*(Nnode_c*(Nnode_c+1)-(nu_c-1)*nu_c)+
           (N_cpu_e/ (2*n_cpu_e) )*(Nnode_e*(Nnode_e+1)-(nu_e-1)*nu_e) )
          
 # Theta_i
-theta_cost = 0.1
-theta_risk = 0.3
-theta_el = 0.6 
+theta_cost = 1.0
+theta_risk = 0.0
+theta_el = 0.0
+
+#Cumulative objective function
+objective_function =((theta_cost * lpSum(cost_terms) / w_cost) + 
+                     (theta_risk * (lpSum(risk_terms)/(Npod_c+Npod_e ))) +
+                     (theta_el*lpSum(el_terms)/w_el))
 
 # Add objective functions to the problem
-problem += theta_cost * lpSum(cost_terms) / w_cost
-problem += theta_risk * (lpSum(risk_terms)/(Npod_c+Npod_e ))
-problem += theta_el*lpSum(el_terms)/w_el
+problem += objective_function
 
 problem_end = time()
 
