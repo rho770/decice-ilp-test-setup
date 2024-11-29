@@ -27,6 +27,15 @@ overwrite_file(output_file)
 appl = Application(os.path.join(BASEDIR,'../data/input', case_dir, appl_file))
 infra = Infrastructure(os.path.join(BASEDIR,'../data/input',case_dir, infra_file ))
 
+Npod_c = appl.count_containers()[0] #Number of cloud pods to be scheduled
+Npod_e = appl.count_containers()[1] #Number of edge pods to be scheduled
+Nnode_c = infra.count_nodes()[0]    #Total number of cloud servers
+Nnode_e = infra.count_nodes()[1]    #Total number of edge servers
+n_cpu_c = appl.average_ncore()[0]   #Average number of CPU cores requested by a cloud pod
+n_cpu_e = appl.average_ncore()[1]   #Average number of CPU cores requested by an edge pod
+N_cpu_c = infra.ncores()[0]         #Number of CPU cores provided by a cloud node
+N_cpu_e = infra.ncores()[1]         #Number of CPU cores provided by an edge node
+
 # --------------------------------------------------------------------------
 # Generate ILP Problem
 # --------------------------------------------------------------------------
@@ -77,8 +86,8 @@ for node in infra.nodeList:
 
 # Objective function: Minimize costs and risks
 cost_terms = []
-el_terms = []
 risk_terms = []
+el_terms = []
 
 for container in appl.containerList:
     w = 1.0
@@ -91,14 +100,25 @@ for container in appl.containerList:
             w += 1
 
 # Electricity weight function
-weight_func = (appl.average_ncore()[0]/infra.ncores()[0]*appl.count_containers()[0]*infra.power_consumption()[0]+
-               appl.average_ncore()[1]/infra.ncores()[1]*appl.count_containers()[1]*infra.power_consumption()[1]) * infra.max_eprice() 
+w_el = (n_cpu_c/N_cpu_c*Npod_c*infra.power_consumption()[0]+
+        n_cpu_e/N_cpu_e*Npod_e*infra.power_consumption()[1]) * infra.max_eprice() 
 
-weight_el = 0.6
-weight_risk = 0.1
-weight_cost = 0.3 
+# Cost weight function
+nu_c = Nnode_c - (Npod_c*n_cpu_c/N_cpu_c) 
+nu_e = Nnode_e - (Npod_e*n_cpu_e/N_cpu_e)
+w_cost = ((N_cpu_c/ (2*n_cpu_c) )*(Nnode_c*(Nnode_c+1)-(nu_c-1)*nu_c)+
+          (N_cpu_e/ (2*n_cpu_e) )*(Nnode_e*(Nnode_e+1)-(nu_e-1)*nu_e) )
+         
+# Theta_i
+theta_cost = 0.1
+theta_risk = 0.3
+theta_el = 0.6 
 
-problem += weight_cost * lpSum(cost_terms) + weight_risk * (lpSum(risk_terms)/(appl.count_containers()[0]+appl.count_containers()[1] )) + weight_el*(1/weight_func)*lpSum(el_terms)
+# Add objective functions to the problem
+problem += theta_cost * lpSum(cost_terms) / w_cost
+problem += theta_risk * (lpSum(risk_terms)/(Npod_c+Npod_e ))
+problem += theta_el*lpSum(el_terms)/w_el
+
 problem_end = time()
 
 # --------------------------------------------------------------------------
@@ -108,15 +128,20 @@ solver_start = time()
 problem.solve()
 solver_end = time()
 
-print_to_file(output_file, f'{problem}')
+#print_to_file(output_file, f'{problem}')
 
 # Display variable values
-for var in problem.variables():
-    print_to_file(output_file, f"{var.name} = {var.varValue}")
+#for var in problem.variables():
+#    print_to_file(output_file, f"{var.name} = {var.varValue}")
 
 # Display status and objective value
 print_to_file(output_file, f"Solver Status: {LpStatus[problem.status]}")
 print_to_file(output_file, f"Objective Value: {value(problem.objective)}")
+#print(problem.objective)
+print(f"Solver Status: {LpStatus[problem.status]}")
+print(f"Objective Value: {value(problem.objective)}")
+
+
 
 # Display execution time
 end_time = time()      
