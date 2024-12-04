@@ -145,7 +145,7 @@ def create_application_xml(cloud_containers, edge_containers, selected_regions, 
     print(f"XML file '{filename}' created with {cloud_containers} cloud containers and {edge_containers} edge containers.")
 
 # Function to generate a single container XML element
-def generate_container(container_id, node_type, selected_regions, ncore=4, memory=4,r_max = 0.7, p_e = p_e):
+def generate_container(container_id, node_type, selected_regions, ncore=4, memory=4,r_max = r_max, p_e = p_e):
     container = ET.Element("container")
 
     # Add container ID
@@ -168,7 +168,7 @@ def generate_container(container_id, node_type, selected_regions, ncore=4, memor
     memory_elem = ET.SubElement(container, "mainMemory")
     memory_elem.text = str(memory)
 
-    # Add risk (always 0.7 - High Risk)
+    # Add risk
     risk_elem = ET.SubElement(container, "risk")
     risk_elem.text = str(r_max)
 
