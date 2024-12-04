@@ -110,14 +110,17 @@ w_cost = ((N_cpu_c/ (2*n_cpu_c) )*(Nnode_c*(Nnode_c+1)-(nu_c-1)*nu_c)+
           (N_cpu_e/ (2*n_cpu_e) )*(Nnode_e*(Nnode_e+1)-(nu_e-1)*nu_e) )
          
 # Theta_i
-theta_cost = 1.0
-theta_risk = 0.0
-theta_el = 0.0
+theta_cost = 1/3
+theta_risk = 1/3
+theta_el = 1/3
+
+#Individual objective function
+f_cost = theta_cost * lpSum(cost_terms) / w_cost
+f_risk = theta_risk * (lpSum(risk_terms)/(Npod_c+Npod_e))
+f_el = theta_el*lpSum(el_terms)/w_el
 
 #Cumulative objective function
-objective_function =((theta_cost * lpSum(cost_terms) / w_cost) + 
-                     (theta_risk * (lpSum(risk_terms)/(Npod_c+Npod_e ))) +
-                     (theta_el*lpSum(el_terms)/w_el))
+objective_function = f_cost + f_risk + f_el
 
 # Add objective functions to the problem
 problem += objective_function
@@ -140,11 +143,9 @@ solver_end = time()
 # Display status and objective value
 print_to_file(output_file, f"Solver Status: {LpStatus[problem.status]}")
 print_to_file(output_file, f"Objective Value: {value(problem.objective)}")
-#print(problem.objective)
-print(f"Solver Status: {LpStatus[problem.status]}")
-print(f"Objective Value: {value(problem.objective)}")
-
-
+print_to_file(output_file, f"f_cost: {value(f_cost)}")
+print_to_file(output_file, f"f_security: {value(f_risk)}")
+print_to_file(output_file, f"f_electricity: {value(f_el)}")
 
 # Display execution time
 end_time = time()      
