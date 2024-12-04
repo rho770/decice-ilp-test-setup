@@ -9,7 +9,7 @@ cloud_nodes = 100
 edge_nodes = 1000
   
 # Choose the specific region
-selected_regions = [3]
+selected_regions = [1,2,4,5]
 
 # number of regions to use
 num_regions = len(selected_regions)
@@ -20,5 +20,8 @@ edge_containers = 100
 
 #Proability of a container being in a specific region
 p_e = 0.5
+
+# Maximum security risk level for pods
+r_max = 0.7
 
 
