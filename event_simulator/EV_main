@@ -1,0 +1,203 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Mar 26 10:12:01 2025
+
+@author: Francesco Brandoli
+
+Discrete event simulator for individual pod allocation
+"""
+import xml.etree.ElementTree as ET
+import simpy
+import os
+import sys
+from time import time
+
+
+BASEDIR = os.path.dirname(sys.argv[0])
+modules_dir = os.path.join(BASEDIR, '../modules')
+sys.path.append(modules_dir)
+
+from parsing_xml import *
+from writing_output import *
+
+# Global metrics for cost and risk tracking
+total_energy_cost = 0
+total_risk = 0
+Ncloud = "5"
+Nedge = "50"
+Pcloud = "50"
+Pedge = "10"
+regions = "[1, 2, 3, 4, 5]"
+pe = "0.0"
+
+output_file = f"data/Ncloud_{Ncloud}_Nedge_{Nedge}_E{regions}_Pcloud_{Pcloud}_Pedge_{Pedge}_pe{pe}.txt"
+overwrite_file(output_file)
+
+
+class Node:
+    def __init__(self, env, node_id, node_type, main_memory, Ncore, risk, region, eprice, power):
+        self.env = env
+        self.node_id = node_id
+        self.node_type = node_type
+        self.region = int(region)
+        self.risk = float(risk)
+        self.eprice = float(eprice)  
+        self.total_memory = int(main_memory)
+        self.total_cpu = int(Ncore)
+        self.power = int(power)
+
+        # Use simpy.Container for memory and CPU tracking
+        self.memory = simpy.Container(env, init=self.total_memory, capacity=self.total_memory)
+        self.cpu = simpy.Container(env, init=self.total_cpu, capacity=self.total_cpu)
+
+    def __repr__(self):
+        return (f"Node({self.node_id}, type={self.node_type}, region={self.region}, "
+                f"risk={self.risk:.4f}, eprice={self.eprice:.4f}, "
+                f"mem={self.memory.level}/{self.total_memory}, "
+                f"cpu={self.cpu.level}/{self.total_cpu})")
+    
+class Pod:
+    def __init__(self, pod_id, required_node_type, required_memory, required_risk, required_region, required_cpu):
+        self.pod_id = pod_id
+        self.required_node_type = required_node_type  
+        self.required_memory = int(required_memory)
+        self.required_risk = float(required_risk)
+        self.required_region = int(required_region)
+        self.required_cpu = int(required_cpu)
+
+    
+    def __repr__(self):
+        return (f"Pod({self.pod_id}, type={self.required_node_type}, "
+                f"mem={self.required_memory}, risk={self.required_risk}, region={self.required_region})")
+
+
+
+def parse_nodes(xml_file, env):
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    nodes = []
+    for node in root.findall('node'):
+        node_id = node.find('id').text
+        node_type = node.find('type').text
+        main_memory = node.find('mainMemory').text
+        Ncore = node.find('Ncore').text
+        risk = node.find('risk').text
+        region = node.find('region').text
+        eprice = node.find('eprice').text  
+        power = node.find('power').text
+        nodes.append(Node(env, node_id, node_type, main_memory, Ncore, risk, region, eprice, power))
+    return nodes
+
+def parse_pods(xml_file):
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    pods = []
+    # Pods (or containers) are processed in sequence
+    for container in root.findall('container'):
+        pod_id = container.find('id').text
+        required_node_type = container.find('nodeType').text
+        main_memory = container.find('mainMemory').text
+        required_risk = container.find('risk').text
+        required_region = container.find('region').text
+        required_cpu = container.find('Ncore').text  # Pod's required CPU cores
+        pods.append(Pod(pod_id, required_node_type, main_memory, required_risk, required_region, required_cpu))
+    return pods
+
+def max_eprice(nodes):
+    """Calculate the maximum electricity price among the nodes."""
+    return max(node.eprice for node in nodes)
+
+    
+def max_risk(nodes):
+    """Calculate the maximum risk for edge and cloud pods."""
+    max_cloud_risk = max(node.risk for node in nodes if 'cloud' in node.node_type)         
+    max_edge_risk = max(node.risk for node in nodes if 'edge' in node.node_type) 
+    return max_cloud_risk, max_edge_risk
+
+
+
+def scheduler(env, pod_queue, nodes):
+    npod = len(pod_queue)
+    global total_energy_cost, total_risk
+    global Pedge, Pcloud, Ncloud
+    Pedge = int(Pedge)
+    Pcloud = int(Pcloud)
+    Ncloud = int(Ncloud)
+    while True:
+        yield env.timeout(1)  # Scheduling interval
+        if pod_queue:
+            pod = pod_queue.pop(0)
+            scheduled = False
+            for node in nodes:
+                # Check node type
+                if node.node_type != pod.required_node_type:
+                    continue
+                # Check region: if pod.required_region != 0, node must be in that region
+                if pod.required_region != 0 and node.region != pod.required_region:
+                    continue
+                # Check risk: node's risk must be less than the pod's required risk
+                if node.risk >= pod.required_risk:
+                    continue
+                # Check if the node has enough memory available
+                if node.memory.level < pod.required_memory or node.cpu.level < pod.required_cpu:
+                    continue
+                
+                # Check if the node was already activated
+                if node.memory.level == 128:
+                    print(f"Node {node.node_id} in region {node.region} activated")
+                    norm_activation_cost = Ncloud*(max_eprice(nodes)*node.power/1000)*0.5
+                    activation_cost = ((node.eprice*node.power/1000)*0.5)/norm_activation_cost
+                else :
+                    activation_cost = 0
+
+                # Allocate CPU and Memory
+                yield node.cpu.get(pod.required_cpu)
+                yield node.memory.get(pod.required_memory)
+                print(f"Time {env.now}: {pod} scheduled on {node}.")
+                scheduled = True
+                if "cloud" in node.node_type:
+                    norm_risk = max_risk(nodes)[0]*Pcloud
+                    norm_el = Pcloud*(max_eprice(nodes)*node.power/1000)*pod.required_cpu/node.total_cpu
+                else:
+                    norm_risk = max_risk(nodes)[1]*Pedge
+                    norm_el = Pedge*(max_eprice(nodes)*node.power/1000)*pod.required_cpu/node.total_cpu
+                el_cost = ((node.eprice*node.power/1000)*pod.required_cpu/node.total_cpu)/norm_el
+                print(el_cost)
+                total_energy_cost += (el_cost+activation_cost)/(3) 
+                total_risk += node.risk/(2*norm_risk)
+               # print(f'Cost so far: {total_energy_cost:.4f}, Risk Exposure: {total_risk:.4f}')
+                break
+            
+            if not scheduled:
+                print(f"Time {env.now}: No suitable node for {pod}. Re-queueing.")
+                pod_queue.append(pod)
+
+# Set up simulation environment
+env = simpy.Environment()
+
+# Parse nodes from the nodes XML file
+nodes_xml = f'../data/input/Ncloud_{Ncloud}_Nedge_{Nedge}/Ncloud_{Ncloud}_Nedge_{Nedge}_E{regions}.xml'
+nodes = parse_nodes(nodes_xml, env)
+theta_risk = 0.5
+theta_price = 0.5
+
+
+nodes = sorted(nodes, key=lambda n: (theta_risk*n.risk+theta_price*n.eprice))
+
+# Parse pods from the pods XML file (containers)
+pods_xml = f'../data/input/Ncloud_{Ncloud}_Nedge_{Nedge}/Pcloud_{Pcloud}_Pedge_{Pedge}_E{regions}_pe{pe}.xml'
+pod_queue = parse_pods(pods_xml)
+
+# Start the scheduler process
+time_start = time()
+env.process(scheduler(env, pod_queue, nodes))
+
+# Run the simulation for a given time
+env.run(until=1000)
+time_end = time()
+results = []
+
+results.append(f'Solver time: {time_end - time_start}')
+results.append(f"Electricity cost: {total_energy_cost} \nTotal risk: {total_risk} \nObjective value: {theta_price*total_energy_cost+theta_risk*total_risk}")
+print_to_file(output_file, '\n'.join(results))
+print(results)
