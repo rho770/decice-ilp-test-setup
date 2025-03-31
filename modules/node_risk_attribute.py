@@ -30,14 +30,14 @@ def monte_carlo_risk_simulation(nodetype, num_samples=10000, alpha=0.5, beta=0):
         
     # Perform num_samples montecarlo simulations
     security_risk_samples = np.random.uniform(lower_limit, upper_limit,num_samples)
-    reliability_risk_samples = normalize_0_1(np.random.weibull(shape_reliability, num_samples) * scale_reliability)
+   # reliability_risk_samples = normalize_0_1(np.random.weibull(shape_reliability, num_samples) * scale_reliability)
     
     
     # Estimate total risk considering a weighted sum
-    risk_attribute_samples = normalize_0_1(alpha * security_risk_samples + 
-                              beta * reliability_risk_samples)  
+    ##risk_attribute_samples = normalize_0_1(alpha * security_risk_samples + 
+    #                          beta * reliability_risk_samples)  
     
-    return risk_attribute_samples
+    return security_risk_samples
 
 def extract_random_risk_sample(risk_attribute_samples):
     return np.random.choice(risk_attribute_samples)

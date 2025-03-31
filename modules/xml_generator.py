@@ -29,7 +29,7 @@ electricity_prices = {
 
 def calculate_risk(nodetype):
     risk_attribute_samples = monte_carlo_risk_simulation(nodetype, num_samples=10000, alpha=0.5, beta=0.5)
-    return round(extract_random_risk_sample(risk_attribute_samples),1)
+    return round(extract_random_risk_sample(risk_attribute_samples),4)
 
 # Function to generate a single node XML element
 def generate_node(node_id, node_type, ncore, memory,  power, region):
@@ -58,7 +58,7 @@ def generate_node(node_id, node_type, ncore, memory,  power, region):
 
     # Add risk (using node_risk_attribute)
     risk_elem = ET.SubElement(node, "risk")
-    risk_elem.text = f"{calculate_risk(node_type):.1f}"
+    risk_elem.text = f"{calculate_risk(node_type):.4f}"
 
     # Add region 
     region_elem = ET.SubElement(node, "region")

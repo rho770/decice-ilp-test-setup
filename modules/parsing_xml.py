@@ -75,18 +75,32 @@ class Application:
     
     def count_containers(self):
         cloud_count, edge_count = 0, 0
+        zero_cloud, zero_edge = 0, 0
         for container in self.containerList:
             if 'cloud' in container.nodeType:
                 cloud_count += 1
+                if container.region == 0:
+                    zero_cloud += 1 
             elif 'edge' in container.nodeType:
                 edge_count += 1
-        return cloud_count, edge_count
+                if container.region == 0:
+                    zero_edge +=1
+        return cloud_count, edge_count, zero_cloud, zero_edge
     
     def average_ncore(self):
         #Hardcoded - modify?
         avg_cloud = 4
         avg_edge = 4
         return avg_cloud, avg_edge
+        
+    def containers_per_region(self, region):
+        cloud_count, edge_count = 0, 0
+        for container in self.containerList:
+            if 'cloud' in container.nodeType and region == container.region:
+                cloud_count += 1
+            elif 'edge' in container.nodeType and region == container.region:
+                edge_count += 1
+        return cloud_count, edge_count
 
 class Infrastructure:
     def __init__(self, xml_file):
@@ -101,6 +115,24 @@ class Infrastructure:
             return None  # Handle empty node list case
         return max(node.eprice for node in self.nodeList)
     
+    def min_eprice(self):
+        """Calculate the maximum electricity price among the nodes."""
+        if not self.nodeList:
+            return None  # Handle empty node list case
+        return min(node.eprice for node in self.nodeList)
+    
+    def max_risk(self):
+        """Calculate the maximum risk for edge and cloud pods."""
+        max_cloud_risk = max(node.risk for node in self.nodeList if 'cloud' in node.type)         
+        max_edge_risk = max(node.risk for node in self.nodeList if 'edge' in node.type) 
+        return max_cloud_risk, max_edge_risk
+
+    def min_risk(self):
+        """Calculate the maximum risk for edge and cloud pods."""
+        min_cloud_risk = min(node.risk for node in self.nodeList if 'cloud' in node.type)         
+        min_edge_risk = min(node.risk for node in self.nodeList if 'edge' in node.type) 
+        return min_cloud_risk, min_edge_risk
+
     def power_consumption(self):
         #Hardcoded - modify?
         P_cloud = 392
@@ -121,5 +153,15 @@ class Infrastructure:
             elif 'edge' in node.type:
                 edge_count += 1
         return cloud_count, edge_count
+    
+    def count_nodes_per_region(self, region):
+        cloud_count, edge_count = 0, 0
+        for node in self.nodeList:
+            if 'cloud' in node.type and region == node.region:
+                cloud_count += 1
+            elif 'edge' in node.type and region == node.region:
+                edge_count += 1
+        return cloud_count, edge_count
+    
 
     
