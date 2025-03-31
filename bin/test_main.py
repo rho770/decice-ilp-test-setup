@@ -1,10 +1,16 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Feb 11 11:09:20 2025
+
+@author: Francesco Brandoli 
+
+Optimized ILP for Container-Node Assignment
+"""
 
 import os
 import sys
 from time import time
 from pulp import *
-import random
 
 start_time = time()
 BASEDIR = os.path.dirname(sys.argv[0])
@@ -16,25 +22,25 @@ from parameters import *
 from writing_output import *
 from xml_generator import configuration
 
-infra_file, appl_file, case_dir = configuration(cloud_nodes,edge_nodes, cloud_containers, edge_containers, selected_regions, p_e)
-output_file = "../data/output/"+ case_dir + f'/Ncloud_{cloud_nodes}_Nedge_{edge_nodes}_E{selected_regions}_+Pcloud_{cloud_containers}_Pedge_{edge_containers}_pe{p_e}.txt' 
+infra_file, appl_file, case_dir = configuration(cloud_nodes, edge_nodes, cloud_containers, edge_containers, selected_regions, p_e)
+output_file = f"../data/output/{case_dir}/Ncloud_{cloud_nodes}_Nedge_{edge_nodes}_E{selected_regions}_Pcloud_{cloud_containers}_Pedge_{edge_containers}_pe{p_e}.txt"
+
 overwrite_file(output_file)
 
 # --------------------------------------------------------------------------
 # Parse application and infrastructure XML files
 # --------------------------------------------------------------------------
 
-appl = Application(os.path.join(BASEDIR,'../data/input', case_dir, appl_file))
-infra = Infrastructure(os.path.join(BASEDIR,'../data/input',case_dir, infra_file ))
+appl = Application(os.path.join(BASEDIR, '../data/input', case_dir, appl_file))
+infra = Infrastructure(os.path.join(BASEDIR, '../data/input', case_dir, infra_file))
 
-Npod_c = appl.count_containers()[0] #Number of cloud pods to be scheduled
-Npod_e = appl.count_containers()[1] #Number of edge pods to be scheduled
-Nnode_c = infra.count_nodes()[0]    #Total number of cloud servers
-Nnode_e = infra.count_nodes()[1]    #Total number of edge servers
-n_cpu_c = appl.average_ncore()[0]   #Average number of CPU cores requested by a cloud pod
-n_cpu_e = appl.average_ncore()[1]   #Average number of CPU cores requested by an edge pod
-N_cpu_c = infra.ncores()[0]         #Number of CPU cores provided by a cloud node
-N_cpu_e = infra.ncores()[1]         #Number of CPU cores provided by an edge node
+# Precompute valid (container, node) pairs
+valid_pairs = {}
+for container in appl.containerList:
+    valid_nodes = [node for node in infra.nodeList if container.nodeType == node.type 
+                   and node.risk <= container.risk 
+                   and (container.region == 0 or container.region == node.region)]
+    valid_pairs[container] = valid_nodes
 
 # --------------------------------------------------------------------------
 # Generate ILP Problem
@@ -43,113 +49,93 @@ N_cpu_e = infra.ncores()[1]         #Number of CPU cores provided by an edge nod
 problem_start = time()
 
 # Define decision variables
-variables = {}
-for container in appl.containerList:
-    for node in infra.nodeList:
-        if (
-            container.nodeType == node.type and 
-            node.risk < container.risk and
-            (container.region == 0 or container.region == node.region)
-        ):
-            var_name = f'X_{container.id}_{node.id}'
-            variables[(container, node)] = LpVariable(var_name, cat='Binary')
+decision_vars = { (container, node): LpVariable(f'X_{container.id}_{node.id}', cat='Binary')
+                  for container, nodes in valid_pairs.items() for node in nodes }
+node_usage = { node: LpVariable(f'Y_{node.id}', cat='Binary') for node in infra.nodeList }
 
-        
 # Initialise problem
 problem = LpProblem("Container_Node_Assignment", LpMinimize)
 
-# --------------------------------------------------------------------------
-# Add constraints
-# --------------------------------------------------------------------------
-
-# Constraint: Each container must be assigned to exactly one node
+# Constraints
 for container in appl.containerList:
-    problem += lpSum(variables[(container, node)] 
-                     for node in infra.nodeList 
-                     if (container, node) in variables) == 1, f"unicity_{container.id}"
+    problem += lpSum(decision_vars[(container, node)] for node in valid_pairs[container]) == 1, f"unicity_{container.id}"
 
-# Constraint: Node resources must not be exceeded (CPU cores)
 for node in infra.nodeList:
-    problem += lpSum(variables[(container, node)] * container.Ncore
-                     for container in appl.containerList
-                     if (container, node) in variables) <= node.Ncore, f"CPU_{node.id}"
+    valid_containers = [container for container in appl.containerList if (container, node) in decision_vars]
+    problem += lpSum(decision_vars[(container, node)] * container.Ncore for container in valid_containers) <= node.Ncore, f"CPU_{node.id}"
+    problem += lpSum(decision_vars[(container, node)] * container.mainMemory for container in valid_containers) <= node.mainMemory, f"memory_{node.id}"
 
-# Constraint: Node resources must not be exceeded (main memory)
-for node in infra.nodeList:
-    problem += lpSum(variables[(container, node)] * container.mainMemory
-                     for container in appl.containerList
-                     if (container, node) in variables) <= node.mainMemory, f"memory_{node.id}"
+    problem += lpSum(decision_vars[(container, node)] for container in valid_containers) <= node_usage[node] * len(valid_containers), f"NodeUsage_{node.id}"
+    problem += lpSum(decision_vars[(container, node)] for container in valid_containers) >= node_usage[node], f"NodeUsage2_{node.id}"
+    
+# Cost terms
+risk_terms_edge = [decision_vars[(container, node)] * node.risk for container, node in decision_vars if node.type == 'edge-cpu']
+risk_terms_cloud = [decision_vars[(container, node)] * node.risk for container, node in decision_vars if node.type == 'cloud-cpu']
 
-# --------------------------------------------------------------------------
-# Create objective function
-# --------------------------------------------------------------------------
+el_terms_edge = [decision_vars[(container, node)] * (node.power/1000 * node.eprice * container.Ncore / node.Ncore) for container, node in decision_vars if node.type == 'edge-cpu']
+el_terms_cloud = [decision_vars[(container, node)] * (node.power/1000 * node.eprice * container.Ncore / node.Ncore) for container, node in decision_vars if node.type == 'cloud-cpu']
+el_terms_act = [node_usage[node] * node.power / 1000 * node.eprice * 0.5 for node in infra.nodeList if node.type == 'cloud-cpu']
 
-# Objective function: Minimize costs and risks
-cost_terms = []
-risk_terms = []
-el_terms = []
+# Normalization 
+max_el_cloud = sum(infra.power_consumption()[0]/1000 * infra.max_eprice()*container.Ncore/128 for container in appl.containerList if container.nodeType == 'cloud-cpu')
+max_el_edge  = sum(infra.power_consumption()[1]/1000 * infra.max_eprice()  for container in appl.containerList if container.nodeType == 'edge-cpu')
+max_el_act  = sum(node.power/1000 * infra.max_eprice()*0.5 for node in infra.nodeList if node.type == 'cloud-cpu')
 
-for container in appl.containerList:
-    w = 1.0
-    for node in infra.nodeList:
-        if (container, node) in variables:
-            cost_terms.append(w*variables[(container, node)])
-            risk_terms.append(variables[(container, node)] * node.risk)
-            el_terms.append(variables[(container, node)]* 
-                            node.power * node.eprice * container.Ncore/ node.Ncore)
-            w += 1
+max_risk_cloud = infra.max_risk()[0]
+max_risk_edge = infra.max_risk()[1]
 
-# Electricity weight function
-w_el = (n_cpu_c/N_cpu_c*Npod_c*infra.power_consumption()[0]+
-        n_cpu_e/N_cpu_e*Npod_e*infra.power_consumption()[1]) * infra.max_eprice() 
+# Cost function (security)
+f_risk_edge = lpSum(risk_terms_edge) / (edge_containers*max_risk_edge)
+f_risk_cloud = lpSum(risk_terms_cloud) / (cloud_containers*max_risk_cloud)
 
-# Cost weight function
-nu_c = Nnode_c - (Npod_c*n_cpu_c/N_cpu_c) 
-nu_e = Nnode_e - (Npod_e*n_cpu_e/N_cpu_e)
-w_cost = ((N_cpu_c/ (2*n_cpu_c) )*(Nnode_c*(Nnode_c+1)-(nu_c-1)*nu_c)+
-          (N_cpu_e/ (2*n_cpu_e) )*(Nnode_e*(Nnode_e+1)-(nu_e-1)*nu_e) )
-         
-# Theta_i
-theta_cost = 1/3
-theta_risk = 1/3
-theta_el = 1/3
+f_risk = (f_risk_cloud+f_risk_edge)/2
 
-#Individual objective function
-f_cost = theta_cost * lpSum(cost_terms) / w_cost
-f_risk = theta_risk * (lpSum(risk_terms)/(Npod_c+Npod_e))
-f_el = theta_el*lpSum(el_terms)/w_el
+# Cost function (electricity)
+f_el_edge = lpSum(el_terms_edge) / max_el_edge
+f_el_cloud = lpSum(el_terms_cloud) / max_el_cloud
+f_el_act = lpSum(el_terms_act) / max_el_act
 
-#Cumulative objective function
-objective_function = f_cost + f_risk + f_el
+f_el = (f_el_cloud + f_el_edge + f_el_act)/3
 
-# Add objective functions to the problem
-problem += objective_function
+# Weights
+theta_risk = 0#0.5
+theta_el = 1#0.5
+
+# Add weighted cost functions to the problem
+problem += theta_risk * f_risk + theta_el * f_el
 
 problem_end = time()
 
 # --------------------------------------------------------------------------
 # Solve Problem and Display Results
 # --------------------------------------------------------------------------
-solver_start = time()
-problem.solve()
-solver_end = time()
+problem.solve() 
 
-#print_to_file(output_file, f'{problem}')
+results = []
+results.append(f"Solver Status: {LpStatus[problem.status]}")
+results.append(f"Objective Value: {value(problem.objective)}")
+results.append(f"Number of cost function terms: {len(problem.objective.items())}")
+results.append(f"Number of constraints: {len(problem.constraints)}")
 
-# Display variable values
-#for var in problem.variables():
-#    print_to_file(output_file, f"{var.name} = {var.varValue}")
+results.append(f"f_security value (norm): {value(f_risk)}")
+results.append(f"f_security value: {value(f_risk_edge)*(edge_containers*max_risk_edge)+value(f_risk_cloud)*(cloud_containers*max_risk_cloud)}")
+results.append(f"f_security_cloud: {f_risk_cloud} ")
+results.append(f"f_security_edge: {f_risk_edge} ")
 
-# Display status and objective value
-print_to_file(output_file, f"Solver Status: {LpStatus[problem.status]}")
-print_to_file(output_file, f"Objective Value: {value(problem.objective)}")
-print_to_file(output_file, f"f_cost: {value(f_cost)}")
-print_to_file(output_file, f"f_security: {value(f_risk)}")
-print_to_file(output_file, f"f_electricity: {value(f_el)}")
+results.append(f"f_electricity value (norm): {value(f_el)}")
+results.append(f"f_electricity value: {value(f_el_cloud)*max_el_cloud+value(f_el_edge)*max_el_edge+value(f_el_act)*max_el_act}")
+results.append(f"f_electricity_cloud (norm): {f_el_cloud}")
+results.append(f"f_electricity_edge (norm): {f_el_edge}")
 
-# Display execution time
-end_time = time()      
-elapsed_time = end_time - start_time
-print_to_file(output_file, f"Total execution time: {elapsed_time:.4f} s")
-print_to_file(output_file, f"Problem creation time: {problem_end-problem_start:.4f} s" )
-print_to_file(output_file, f"Solver time: {solver_end-solver_start:.4f} s" )
+results.append(f"Total execution time: {time() - start_time:.4f} s")
+results.append(f"Problem creation time: {problem_end - problem_start:.4f} s")
+results.append(f"Solver time: {problem.solutionTime} s")
+
+num_variables= 0
+for var in problem.variables():
+    if var.varValue ==1:
+        results.append(f"{var.name} = {var.varValue}")
+    num_variables +=1
+results.append(f"Number of decision variables: {num_variables}")
+
+print_to_file(output_file, '\n'.join(results))
