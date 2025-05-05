@@ -8,14 +8,15 @@ Created on Fri Nov 15 15:19:13 2024
 import xml.etree.ElementTree as ET
 
 class Container:
-    def __init__(self, container_data, index):
-        self.id = index  # Use the index as the ID
+    def __init__(self, container_data):
+        self.id = container_data['id']
         self.type = container_data['type']
         self.nodeType = container_data['nodeType']
         self.Ncore = container_data['Ncore']
         self.mainMemory = container_data['mainMemory']
         self.risk = container_data['risk']
         self.region = container_data['region']
+        self.r_time = container_data['r_time']
 
 class Node:
     def __init__(self, node_data, index):
@@ -27,6 +28,7 @@ class Node:
         self.region = node_data['region']
         self.power = node_data['power']
         self.eprice = node_data['eprice']
+        self.activation = node_data['activation']
 
 def parse_application_xml(xml_file):
     tree = ET.parse(xml_file)
@@ -35,14 +37,16 @@ def parse_application_xml(xml_file):
     
     for index, container in enumerate(root.findall('container')):
         container_data = {
+            'id': int(container.find('id').text.split(':', 1)[1]),
             'type': container.find('type').text,
             'nodeType': container.find('nodeType').text,
             'Ncore': int(container.find('Ncore').text),
             'mainMemory': int(container.find('mainMemory').text),
             'risk': float(container.find('risk').text),
             'region': int(container.find('region').text),
+            'r_time': float(container.find('r_time').text),
         }
-        container_list.append(Container(container_data, index))  # Pass index
+        container_list.append(Container(container_data))  # Pass index
     
     return container_list
 
@@ -60,6 +64,7 @@ def parse_infrastructure_xml(xml_file):
             'power': float(node.find('power').text),
             'eprice': float(node.find('eprice').text),
             'region': int(node.find('region').text),
+            'activation': float(node.find('activation').text),
         }
         node_list.append(Node(node_data, index))  # Pass index
     
@@ -163,5 +168,32 @@ class Infrastructure:
                 edge_count += 1
         return cloud_count, edge_count
     
+    def set_node_activation(self, node_id, new_value):
+        """
+        Find the node with the given `node_id` and set its activation.
+        Returns True if successful, False if no such node exists.
+        """
+        for node in self.nodeList:
+            if node.id == node_id:
+                node.activation = new_value
+                return True
+        return False
+    
+    def update_node_resources(self, node_id, cpu_delta, mem_delta):
+        """
+        After a pod is deployed on the specified node, deduct CPU cores (cpu_delta) and
+        memory (mem_delta) from the node's available resources.
+        Raises ValueError if the node doesn't exist or resources would go negative.
+        """
+        for node in self.nodeList:
+            if node.id == node_id:
+                if node.Ncore < cpu_delta or node.mainMemory < mem_delta:
+                    raise ValueError(f"Not enough resources on node {node_id}")
+                node.Ncore -= cpu_delta
+                node.mainMemory -= mem_delta
+                return True
+        raise ValueError(f"Node {node_id} not found")
+
+        
 
     

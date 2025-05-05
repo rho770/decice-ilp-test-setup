@@ -68,72 +68,62 @@ def generate_node(node_id, node_type, ncore, memory,  power, region):
     electricity_price = electricity_prices.get(region, 0.0)  # Default to 0.0 if region not found
     price_elem = ET.SubElement(node, "eprice")
     price_elem.text = f"{electricity_price:.4f}"
+    
+    # Add activation status (Empty infrastructure)
+    activation_status = ET.SubElement(node, "activation")
+    activation_status.text = str(0)
 
 
     return node
 
 # Function to generate the XML for a given number of cloud and edge nodes
 # Each region contains the same number of cloud and edge nodes
-def create_infrastructure_xml(cloud_nodes, edge_nodes, num_regions,selected_regions, filename, directory):
+def create_infrastructure_xml(cloud_nodes_per_region,edge_nodes_per_region, selected_regions,filename, directory):
     infrastructure = ET.Element("infrastructure")
-
-    # Calculate number of cloud and edge nodes per region
-    cloud_nodes_per_region = cloud_nodes // num_regions
-    edge_nodes_per_region = edge_nodes // num_regions
-
-    # Distribute any remaining nodes evenly across regions
-    remaining_cloud_nodes = cloud_nodes % num_regions
-    remaining_edge_nodes = edge_nodes % num_regions
-
     node_id = 0
-    # Generate nodes for each region
+
     for region in selected_regions:
-        # Cloud nodes for the current region
-        for i in range(cloud_nodes_per_region + (1 if remaining_cloud_nodes > 0 else 0)):
-            node = generate_node(node_id, "cloud-cpu", 128, 128, 392, region)
+        # generate cloud nodes
+        for _ in range(cloud_nodes_per_region):
+            node = generate_node(node_id,node_type="cloud-cpu", ncore=128, memory=128,power=392,region=region)
             infrastructure.append(node)
             node_id += 1
-        remaining_cloud_nodes -= 1 if remaining_cloud_nodes > 0 else 0
 
-        # Edge nodes for the current region
-        for i in range(edge_nodes_per_region + (1 if remaining_edge_nodes > 0 else 0)):
-            node = generate_node(node_id, "edge-cpu", 4, 4, 4, region)
+        # generate edge nodes
+        for _ in range(edge_nodes_per_region):
+            node = generate_node(node_id,node_type="edge-cpu", ncore=4, memory=4,power=4,region=region)
             infrastructure.append(node)
             node_id += 1
-        remaining_edge_nodes -= 1 if remaining_edge_nodes > 0 else 0
 
-    # Create the tree and write it to a file
+    # write out XML exactly as before…
     tree = ET.ElementTree(infrastructure)
-    input_dir = os.path.join("../data/input", directory)
+    input_dir  = os.path.join("../data/input",  directory)
     output_dir = os.path.join("../data/output", directory)
-    
-    # Create the directories for input and output files.
-    if os.path.exists(input_dir):
-        print(f"The directory '{input_dir}' already exists.")
-    else:
-        print(f"The directory '{input_dir}' does not exist.")
-        os.makedirs(input_dir)
-        os.makedirs(output_dir)
-        print(f"Directories '{input_dir}' and {output_dir} created successfully.")
-    
+    os.makedirs(input_dir,  exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     filepath = os.path.join(input_dir, filename)
     tree.write(filepath, encoding="utf-8", xml_declaration=True)
 
-    print(f"XML file '{filename}' created with {cloud_nodes} cloud nodes and {edge_nodes} edge nodes distributed across {num_regions} regions.")
-    
+    print(f"XML file '{filename}' created with "
+          f"{cloud_nodes_per_region} cloud-nodes and "
+          f"{edge_nodes_per_region} edge-nodes in each of "
+          f"{len(selected_regions)} regions.")
+   
     
 # Function to generate the application XML file
-def create_application_xml(cloud_containers, edge_containers, selected_regions, filename, directory):
+def create_application_xml(cloud_containers, edge_containers, user_region, filename, directory, initial_id = 0):
     application = ET.Element("application")
 
     # Generate cloud containers
     for i in range(cloud_containers):
-        container = generate_container(i, "cloud-cpu", selected_regions)
+        container = generate_container(i+initial_id, "cloud-cpu", user_region)
         application.append(container)
+        
+        
 
     # Generate edge containers
     for i in range(edge_containers):
-        container = generate_container(cloud_containers + i, "edge-cpu", selected_regions)
+        container = generate_container(cloud_containers + i+initial_id, "edge-cpu", user_region)
         application.append(container)
 
     # Create the tree and write it to a file
@@ -144,8 +134,48 @@ def create_application_xml(cloud_containers, edge_containers, selected_regions, 
 
     print(f"XML file '{filename}' created with {cloud_containers} cloud containers and {edge_containers} edge containers.")
 
+def update_application_xml(cloud_containers, edge_containers, selected_regions, filename, directory, initial_id = 0):
+    input_dir = os.path.join("../data/input", directory)
+    os.makedirs(input_dir, exist_ok=True)
+    filepath = os.path.join(input_dir, filename)
+
+    # Check if file exists
+    if os.path.exists(filepath):
+        tree = ET.parse(filepath)
+        application = tree.getroot()
+    else:
+        application = ET.Element("application")
+        tree = ET.ElementTree(application)
+
+    # Find highest numeric ID from existing containers
+    max_id = -1
+    for container in application.findall("container"):
+        id_elem = container.find("id")
+        if id_elem is not None and id_elem.text and id_elem.text.startswith("global:"):
+            try:
+                num = int(id_elem.text.split(":")[1])
+                max_id = max(max_id, num)
+            except (IndexError, ValueError):
+                continue
+
+    next_id = max_id + 1
+    # Append cloud containers
+    for i in range(cloud_containers):
+        container = generate_container(next_id + i +initial_id, "cloud-cpu", selected_regions)
+        application.append(container)
+        last_id = next_id + i +initial_id
+
+    # Append edge containers
+    for i in range(edge_containers):
+        container = generate_container(next_id + initial_id+ cloud_containers + i, "edge-cpu", selected_regions)
+        application.append(container)
+
+    # Write back to the file
+    tree.write(filepath, encoding="utf-8", xml_declaration=True)
+
+
 # Function to generate a single container XML element
-def generate_container(container_id, node_type, selected_regions, ncore=4, memory=4,r_max = r_max, p_e = p_e):
+def generate_container(container_id, node_type, user_region, ncore=4, memory=4,r_max = r_max):
     container = ET.Element("container")
 
     # Add container ID
@@ -174,33 +204,36 @@ def generate_container(container_id, node_type, selected_regions, ncore=4, memor
 
     # Add region (random integer within the range of regions specified)
     # Caveat: in case region is not specified, we assign the value 0
+    # Caveat: Edge pods are deployed only in the user's region
     region_elem = ET.SubElement(container, "region")
-    #Probability of region, being specified
     
-    if random.random() < p_e :
-        region_elem.text = str(random.choice(selected_regions))
+    if node_type == "edge-cpu" :
+        region_elem.text = str(user_region)
     else :
         region_elem.text = str(0)
+        
+    # Add running time (For now fixed)
+    running_time = ET.SubElement(container, "r_time")
+    running_time.text = str(3) #[s]
 
     return container
 
-def configuration(cloud_nodes,edge_nodes, cloud_containers, edge_containers, selected_regions, p_e):
+def configuration(cloud_nodes,edge_nodes, cloud_containers, edge_containers, selected_regions, user_region):
 
     infra_file = f"Ncloud_{cloud_nodes}_Nedge_{edge_nodes}_E{selected_regions}.xml"
-    appl_file = f"Pcloud_{cloud_containers}_Pedge_{edge_containers}_E{selected_regions}_pe{p_e}.xml"
+    appl_file = f"Pcloud_{cloud_containers}_Pedge_{edge_containers}_E{selected_regions}.xml"
     case_dir = f'Ncloud_{cloud_nodes}_Nedge_{edge_nodes}'
     
     return infra_file, appl_file, case_dir
-    
 
 
 # Main function to generate the XML files
 def main():
 
-    configurations = configuration(cloud_nodes,edge_nodes, cloud_containers, edge_containers, selected_regions, p_e)
+    configurations = configuration(cloud_nodes,edge_nodes, cloud_containers, edge_containers, selected_regions, user_region)
     # Create the infrastructure and application XML files
-    create_infrastructure_xml(cloud_nodes, edge_nodes, num_regions, selected_regions, configurations[0], configurations[2])
-    create_application_xml(cloud_containers, edge_containers, selected_regions, configurations[1], configurations[2])
+    create_infrastructure_xml(cloud_nodes, edge_nodes, selected_regions, configurations[0], configurations[2])
+    create_application_xml(cloud_containers, edge_containers, user_region, configurations[1], configurations[2])
 
 # Run the script
 if __name__ == "__main__":
