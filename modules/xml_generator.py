@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import os
 import sys
 from node_risk_attribute import *
+from poisson_arrivals import *
 import random
 
 BASEDIR = os.path.dirname(sys.argv[0])
@@ -26,6 +27,9 @@ electricity_prices = {
     4: 0.2169,  # Croatia (HR)
     5: 0.2543   # Ireland (IE)
 }
+
+# Define Container's arrivals time 
+arrivals = poisson_arrivals_in_window(lambda_rate, simulation_time)
 
 def calculate_risk(nodetype):
     risk_attribute_samples = monte_carlo_risk_simulation(nodetype, num_samples=10000, alpha=0.5, beta=0.5)
@@ -113,17 +117,15 @@ def create_infrastructure_xml(cloud_nodes_per_region,edge_nodes_per_region, sele
 # Function to generate the application XML file
 def create_application_xml(cloud_containers, edge_containers, user_region, filename, directory, initial_id = 0):
     application = ET.Element("application")
-
+ 
     # Generate cloud containers
     for i in range(cloud_containers):
-        container = generate_container(i+initial_id, "cloud-cpu", user_region)
+        container = generate_container(i+initial_id, "cloud-cpu", user_region, arrival_label, request_id)
         application.append(container)
-        
-        
 
     # Generate edge containers
     for i in range(edge_containers):
-        container = generate_container(cloud_containers + i+initial_id, "edge-cpu", user_region)
+        container = generate_container(cloud_containers + i+initial_id, "edge-cpu", user_region, arrival_label, request_id)
         application.append(container)
 
     # Create the tree and write it to a file
@@ -133,6 +135,44 @@ def create_application_xml(cloud_containers, edge_containers, user_region, filen
     tree.write(filepath, encoding="utf-8", xml_declaration=True)
 
     print(f"XML file '{filename}' created with {cloud_containers} cloud containers and {edge_containers} edge containers.")
+
+def create_queue_application_xml(request_specs, user_region,
+                           filename, directory, initial_id=0):
+    """
+    request_specs: list of (n_cloud, n_edge) pairs, one per request
+    e.g. [(2,1),   # request 0 needs 2 clouds + 1 edge
+          (1,3),   # request 1 needs 1 cloud  + 3 edges
+          …]
+    """
+    application = ET.Element("application")
+    current_id = initial_id
+
+    for request_id, (n_cloud, n_edge) in enumerate(request_specs):
+        # 1) emit all the cloud containers for this request
+        for _ in range(n_cloud):
+            c = generate_container(current_id, "cloud-cpu", user_region, arrival_label, request_id)
+            application.append(c)
+            current_id += 1
+
+        # 2) then all the edge containers for this request
+        for _ in range(n_edge):
+            c = generate_container(current_id, "edge-cpu", user_region,arrival_label, request_id)
+            application.append(c)
+            current_id += 1
+
+    # write XML out
+    tree = ET.ElementTree(application)
+    input_dir = os.path.join("../data/input", directory)
+    os.makedirs(input_dir, exist_ok=True)
+    filepath = os.path.join(input_dir, filename)
+    tree.write(filepath, encoding="utf-8", xml_declaration=True)
+
+    total_cloud = sum(c for c, _ in request_specs)
+    total_edge  = sum(e for _, e in request_specs)
+    print(f"Created {filename}: {total_cloud} cloud & "
+          f"{total_edge} edge containers across "
+          f"{len(request_specs)} requests.")
+
 
 def update_application_xml(cloud_containers, edge_containers, selected_regions, filename, directory, initial_id = 0):
     input_dir = os.path.join("../data/input", directory)
@@ -175,7 +215,7 @@ def update_application_xml(cloud_containers, edge_containers, selected_regions, 
 
 
 # Function to generate a single container XML element
-def generate_container(container_id, node_type, user_region, ncore=4, memory=4,r_max = r_max):
+def generate_container(container_id, node_type, user_region, arrival_label, request_id, ncore=4, memory=4,r_max = r_max):
     container = ET.Element("container")
 
     # Add container ID
@@ -215,7 +255,17 @@ def generate_container(container_id, node_type, user_region, ncore=4, memory=4,r
     # Add running time (For now fixed)
     running_time = ET.SubElement(container, "r_time")
     running_time.text = str(3) #[s]
-
+    
+    if arrival_label == True:
+        
+        # Add request ID
+        request_id_elem = ET.SubElement(container, "request_id")
+        request_id_elem.text = str(request_id)
+        
+        # Add poissonian arrival time 
+        arrival_time = ET.SubElement(container, "arr_time")    
+        arrival_time.text = str(arrivals[request_id]) #[s]
+        
     return container
 
 def configuration(cloud_nodes,edge_nodes, cloud_containers, edge_containers, selected_regions, user_region):
