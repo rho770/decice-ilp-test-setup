@@ -21,3 +21,12 @@ edge_containers = 1
 
 # Maximum security risk level allowed for pods
 r_max = 1
+
+# Label to activate containers'attributes related to the queue (request_id, arrival_time)
+arrival_label = True
+
+# Poissonian arrival rate 
+lambda_rate = 1
+
+# Simulation Time [s] 
+simulation_time = 15
