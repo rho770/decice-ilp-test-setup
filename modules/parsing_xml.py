@@ -18,6 +18,8 @@ class Container:
         self.region = container_data['region']
         self.request_id = container_data['request_id']
         self.r_time = container_data['r_time']
+        self.arr_time = container_data['arr_time']
+
 
 class Node:
     def __init__(self, node_data, index):
