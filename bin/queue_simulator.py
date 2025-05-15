@@ -47,34 +47,36 @@ overwrite_file(output_file)
 # Parameters for the queue
 # --------------------------------------------------------------------------
 
-window_duration = 3 # [s] Time window for collecting incoming requests
+if cloud_nodes+edge_nodes <= 1000:
+    k = 50 
+elif cloud_nodes+edge_nodes > 1000:
+    k = 25
+window_duration = (k-1)/lambda_rate # [s] Time window for collecting incoming requests t<k/λ
 
 allocations = [] # List to keep track of the pods currently running on the infrastructure
-trimmed_list = []
-t = 0
+trimmed_list = [] # List to keep track of unresolved requests
+sim_time= 0
+service_start = 0
 rng = np.random.default_rng(seed=42)
 
 # --------------------------------------------------------------------------
-# M/D/1 Queue simulation starts here
+# M/G/1 Queue simulation starts here
 # --------------------------------------------------------------------------
 
-simulation_start = time.time()
-
-while (time.time() - simulation_start) < simulation_time:
-    window_start = time.time()
-         
-
-    # This simulate the collecting time 
+while sim_time < simulation_time:
+    print(f'Opening window:{sim_time}')
+    # This simulates the collecting time 
     print(f"\nOpening window for {window_duration} seconds...")
-    time.sleep(window_duration)
+    window_start = sim_time
+    window_end = sim_time + window_duration
 
 # --------------------------------------------------------------------------
 # Clean the infastructure (containers deallocation)
 # --------------------------------------------------------------------------
         
     for index, allocation in enumerate(allocations):
-        if time.time()-allocation[2] > allocation[0].r_time:
-            print(f"{time.time()-allocation[2]} > {allocation[0].r_time}")
+        if sim_time-allocation[2] > allocation[0].r_time:
+            print(f"{sim_time-allocation[2]} > {allocation[0].r_time}")
             print(f'Removing {allocation[0].nodeType} pod {allocation[0].id} from {allocation[1].id}')
 
             infra.update_node_resources(allocation[1].id, -allocation[0].Ncore, -allocation[0].mainMemory)
@@ -89,9 +91,9 @@ while (time.time() - simulation_start) < simulation_time:
 # Collecting requests for the ILP problem
 # --------------------------------------------------------------------------
 
-    # Select requests in time window
-    appl.filter_containers_by_arrival(window_duration*t,window_duration*(t+1))
-    print(f'Selecting request in ({window_duration*t}, {window_duration*(t+1)})')
+    # Select requests in time window + requests arrived during the service
+    appl.filter_containers_by_arrival(service_start,window_end)
+    print(f'Selecting request in ({service_start}, {window_end})')
     num_requests = appl.count_requests()
 
     # Append unresolved requests from previous cycle
@@ -100,21 +102,23 @@ while (time.time() - simulation_start) < simulation_time:
 
     print(f'{num_requests} request arrived. In total {num_requests_total} requests to serve')
 
-    t+=1
     if num_requests_total == 0:
         print('No requests to serve...continue')
+        sim_time = window_end
         continue
     
-    print(f'Time: {time.time() - window_start}s')
+    # When the window is closed the batch is sent to the scheduler
+    print('closing window :', window_end)
+    
 
 # --------------------------------------------------------------------------
 # Solve the ILP problem
 # --------------------------------------------------------------------------
     
-    print('solving ILP problem...')        
+    print('solving ILP problem...') 
+    service_start = window_end       
     problem = ilp_solver.main(appl, infra, output_file)
     solver_status = problem.status
-    solver_time = problem.solutionTime
     
     print(f'Checking feasibility of the solution...status= {solver_status}')
     
@@ -130,11 +134,16 @@ while (time.time() - simulation_start) < simulation_time:
 # --------------------------------------------------------------------------
 # Update the infrastructure (scale memory, CPUs, activation costs)
 # --------------------------------------------------------------------------
-
+    solver_time = problem.solutionTime
+    service_end = service_start+solver_time
+    service_time = service_end-service_start
     print(f"Optimal solution found: solver took {solver_time:.2f}s")
+    print(f"Service time = {service_time}")
 
+    # Update simulation time    
+    sim_time = window_end + solver_time
 
-    allocation_time = time.time()
+    allocation_time = sim_time
 
     print('Updating nodes availability...')        
     
@@ -154,8 +163,8 @@ while (time.time() - simulation_start) < simulation_time:
 
     # Update allocation list                
     for index, allocation in enumerate(allocations):
-        if time.time()-allocation[2] > allocation[0].r_time:
-            print(f"{time.time()-allocation[2]} > {allocation[0].r_time}")
+        if allocation_time-allocation[2] > allocation[0].r_time:
+            print(f"{allocation_time-allocation[2]} > {allocation[0].r_time}")
             print(f'Removing {allocation[0].nodeType} pod {allocation[0].id} from {allocation[1].id}\n')
 
             infra.update_node_resources(allocation[1].id, -allocation[0].Ncore, -allocation[0].mainMemory)
@@ -177,6 +186,21 @@ while (time.time() - simulation_start) < simulation_time:
     for node in infra.nodeList:
         if node.activation == 1:
             print('id:', node.id, node.type, 'activation:', node.activation, 'region:', node.region, node.mainMemory, node.Ncore)
+
+    if not os.path.exists('response_time.txt') or os.path.getsize('response_time.txt') == 0:
+        with open('response_time.txt', "w", encoding="utf-8") as f:
+            f.write('lambda_rate solver_time total_requests N_pods Ncloud Nedge Status window_duration window_end ' + "\n")
+
+
+    with open("response_time.txt", "a", encoding="utf-8") as f:
+                 f.write(f"{lambda_rate} {solver_time} {num_requests_total} {len(appl.containerList)} {cloud_nodes} {edge_nodes} {solver_status} {window_duration} {window_end}"  + "\n")
+
+    if not os.path.exists('queuing_time.txt') or os.path.getsize('queuing_time.txt') == 0:
+        with open('queuing_time.txt', "w", encoding="utf-8") as f:
+            f.write('Request_id container_id arrival_time queue_time solver_time total_time window_end lambda_rate' + "\n")
+
+    for container in appl.containerList:
+        with open("queuing_time.txt", "a", encoding="utf-8") as f:
+                     f.write(f"{container.request_id} {container.id} {container.arr_time} {window_end-container.arr_time} {service_time} {sim_time-container.arr_time} {window_end} {lambda_rate}"  + "\n")
         
-    
 print("Simulation completed.") 
