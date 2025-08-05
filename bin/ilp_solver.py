@@ -22,18 +22,8 @@ from parameters import *
 from writing_output import *
 from xml_generator import configuration
 
-# infra_file, appl_file, case_dir = configuration(cloud_nodes, edge_nodes, cloud_containers, edge_containers, selected_regions, user_region)
-# output_file = f"../data/output/{case_dir}/Ncloud_{cloud_nodes}_Nedge_{edge_nodes}_E{selected_regions}_Pcloud_{cloud_containers}_Pedge_{edge_containers}_user{user_region}.txt"
-
-# overwrite_file(output_file)
 
 def main(appl, infra, output_file):
-    # --------------------------------------------------------------------------
-    # Parse application and infrastructure XML files
-    # --------------------------------------------------------------------------
-    
-#    appl = Application(os.path.join(BASEDIR, '../data/input', case_dir, appl_file))
-#    infra = Infrastructure(os.path.join(BASEDIR, '../data/input', case_dir, infra_file))
     
     # Precompute valid (container, node) pairs
     valid_pairs = {}
@@ -78,19 +68,18 @@ def main(appl, infra, output_file):
     # Cloud nodes cores varies during the loop, keep them fixed to 128
     # PuLP doesn't allow for exactly 0 coefficient, add 1e-10 as arbitrarily small number
     el_terms_edge = [decision_vars[(container, node)] * (node.power/1000 * node.eprice * container.Ncore / node.Ncore) for container, node in decision_vars if node.type == 'edge-cpu']
-    el_terms_cloud = [decision_vars[(container, node)] * (node.power/1000 * node.eprice * container.Ncore / 128) for container, node in decision_vars if node.type == 'cloud-cpu']
+    el_terms_cloud = [decision_vars[(container, node)] * 0.5*(node.power/1000 * node.eprice * container.Ncore / 128) for container, node in decision_vars if node.type == 'cloud-cpu']
     el_terms_act = [(node_usage[node])*(1-node.activation+1e-10) * node.power / 1000 * node.eprice * 0.5 for node in infra.nodeList if node.type == 'cloud-cpu']
     
     # Normalization 
-    max_el_cloud = sum(infra.power_consumption()[0]/1000 * infra.max_eprice()*container.Ncore/128 for container in appl.containerList if container.nodeType == 'cloud-cpu')
+    max_el_cloud = sum(infra.power_consumption()[0]/1000 * infra.max_eprice()*0.5*container.Ncore/128 for container in appl.containerList if container.nodeType == 'cloud-cpu')
     max_el_edge  = sum(infra.power_consumption()[1]/1000 * infra.max_eprice()  for container in appl.containerList if container.nodeType == 'edge-cpu')
     max_el_act  = sum(node.power/1000 * infra.max_eprice()*0.5 for node in infra.nodeList if node.type == 'cloud-cpu')
     
     max_risk_cloud = infra.max_risk()[0]
     max_risk_edge = infra.max_risk()[1]
     
-    # Cost function (security)
-    
+    # Cost function (security)    
     f_risk_edge = lpSum(risk_terms_edge) / (edge_containers*max_risk_edge)  if edge_containers > 0 and max_risk_edge > 0 else 0
     f_risk_cloud = lpSum(risk_terms_cloud) / (cloud_containers*max_risk_cloud) if cloud_containers > 0 and max_risk_cloud > 0 else 0
     
@@ -118,39 +107,53 @@ def main(appl, infra, output_file):
     problem.solve() 
     
     results = []
-    results.append(f"Solver Status: {LpStatus[problem.status]}")
+#    results.append(f"Solver Status: {LpStatus[problem.status]}")
     results.append(f"Objective Value: {value(problem.objective)}")
-    results.append(f"Number of cost function terms: {len(problem.objective.items())}")
-    results.append(f"Number of constraints: {len(problem.constraints)}")
-    results.append(f"Number of decision variables: {len(problem.variables())}")
+#    results.append(f"Number of cost function terms: {len(problem.objective.items())}")
+#    results.append(f"Number of constraints: {len(problem.constraints)}")
+#    results.append(f"Number of decision variables: {len(problem.variables())}")
     
     results.append(f"f_security value (norm): {value(f_risk)}")
-    results.append(f"f_security value: {value(f_risk_edge)*(edge_containers*max_risk_edge)+value(f_risk_cloud)*(cloud_containers*max_risk_cloud)}")
-    #results.append(f"f_security_cloud: {f_risk_cloud} ")
-    #results.append(f"f_security_edge: {f_risk_edge} ")
+#    results.append(f"f_security value: {value(f_risk_edge)*(edge_containers*max_risk_edge)+value(f_risk_cloud)*(cloud_containers*max_risk_cloud)}")
+    results.append(f"f_security_cloud: {value(f_risk_cloud)} ")
+    results.append(f"f_security_edge: {value(f_risk_edge)} ")
     
     results.append(f"f_electricity value (norm): {value(f_el)}")
-    results.append(f"f_electricity value: {value(f_el_cloud)*max_el_cloud+value(f_el_edge)*max_el_edge+value(f_el_act)*max_el_act}")
-    #results.append(f"f_electricity_cloud (norm): {f_el_cloud}")
-    #results.append(f"f_electricity_edge (norm): {f_el_edge}")
+#    results.append(f"f_electricity value: {value(f_el_cloud)*max_el_cloud+value(f_el_edge)*max_el_edge+value(f_el_act)*max_el_act}")
+    results.append(f"f_electricity_cloud (norm): {value(f_el_cloud)}")
+    results.append(f"f_electricity_edge (norm): {value(f_el_edge)}")
+    results.append(f"f_electricity_activation (norm): {value(f_el_act)}")
+    
+#    results.append(f"f_electricity (norm): {f_el}")
+#    results.append(f"f_security (norm): {f_risk}")
+#    results.append(f"f_electricity_cloud (norm): {f_el_cloud}")
+#    results.append(f"f_electricity_act (norm): {f_el_act}")
+#    results.append(f"f_electricity_edge (norm): {f_el_edge}")
+       
+#    results.append(f"f_electricity : {(f_el_cloud)*max_el_cloud+value(f_el_edge)*max_el_edge+value(f_el_act)*max_el_act}")
+#    results.append(f"f_security: {f_risk_edge*(edge_containers*max_risk_edge)+(f_risk_cloud)*(cloud_containers*max_risk_cloud)}")
+#    results.append(f"Objective function: {theta_risk * f_risk + theta_el * f_el}")
     
     results.append(f"Total execution time: {time() - start_time:.4f} s")
     results.append(f"Problem creation time: {problem_end - problem_start:.4f} s")
     results.append(f"Solver time: {problem.solutionTime} s")
     
     
-    # for var in problem.variables():
-    #     if var.varValue ==1:
-    #         results.append(f"{var.name} = {var.varValue}")
-    
+    for var in problem.variables():
+        if var.varValue ==1:
+            results.append(f"{var.name} = {var.varValue}")
+
     print_to_file(output_file, '\n'.join(results))
+        
+    if LpStatus[problem.status] == 'Optimal':
+        with open(f"queue_distributino_{r_max}.txt", "a", encoding="utf-8") as f:
+                 f.write(f"{cloud_containers} {edge_containers} {cloud_nodes} {edge_nodes} {len(problem.constraints)} {len(problem.variables())} {problem.solutionTime}"  + "\n")
     
-    # with open("cloud_pods_time.txt", "a", encoding="utf-8") as f:
-    #         f.write(f"{cloud_containers}  {problem.solutionTime}"  + "\n")
-    
-    # with open("variables_time.txt", "a", encoding="utf-8") as f:
-    #         f.write(f"{cloud_containers} {edge_containers} {cloud_nodes} {edge_nodes} {len(problem.constraints)} {len(problem.variables())} {problem.solutionTime}"  + "\n")
-    
+#    if LpStatus[problem.status] == 'Optimal':
+#        with open("Queue_batch_cloud_week.txt", "a", encoding="utf-8") as f:
+#                f.write(f"{value(f_el_cloud)*max_el_cloud+value(f_el_edge)*max_el_edge+value(f_el_act)*max_el_act} {value(f_risk_edge)*(edge_containers*max_risk_edge)+value(f_risk_cloud)*(cloud_containers*max_risk_cloud)} {lambda_rate}"  + "\n")
+
+
     return problem
 
 if __name__ == "__main__":
@@ -164,4 +167,5 @@ if __name__ == "__main__":
 
     problem= main(appl,infra, output_file)
     print(LpStatus[problem.status])
+    print(problem.solutionTime)
     
