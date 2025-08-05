@@ -250,11 +250,12 @@ def generate_container(container_id, node_type, user_region, arrival_label, requ
     if node_type == "edge-cpu" :
         region_elem.text = str(user_region)
     else :
-        region_elem.text = str(0)
+        
+        region_elem.text = str(random.choice([0, random.choice(selected_regions)]))
         
     # Add running time (For now fixed)
     running_time = ET.SubElement(container, "r_time")
-    running_time.text = str(3) #[s]
+    running_time.text = str(12) #[hours]
     
     if arrival_label == True:
         
@@ -264,7 +265,7 @@ def generate_container(container_id, node_type, user_region, arrival_label, requ
         
         # Add poissonian arrival time 
         arrival_time = ET.SubElement(container, "arr_time")    
-        arrival_time.text = str(arrivals[request_id]) #[s]
+        arrival_time.text = str(arrivals[request_id]) #[hours]
         
     return container
 

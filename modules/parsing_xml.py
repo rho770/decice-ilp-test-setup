@@ -80,7 +80,6 @@ class Application:
     def __init__(self, xml_file):
         self.containerList = parse_application_xml(xml_file)
         self.xml_file = xml_file
-
     
     def nContainer(self):
         return len(self.containerList)
@@ -103,7 +102,11 @@ class Application:
         root = ET.parse(self.xml_file)
         request_ids = {container.request_id for container in self.containerList}
         return len(request_ids)
-
+    
+    def count_requests_in_window(self, t_start, t_end):
+        root = ET.parse(self.xml_file)
+        request_ids = {container.request_id for container in self.containerList if container.arr_time>= t_start and container.arr_time<=t_end}
+        return len(request_ids)
     
     def average_ncore(self):
         #Hardcoded - modify?
@@ -119,6 +122,70 @@ class Application:
             elif 'edge' in container.nodeType and region == container.region:
                 edge_count += 1
         return cloud_count, edge_count
+   
+    
+    def filter_request_batch(self, batch_start, batch_size, output_xml_path=None):
+        """
+        Keep only containers belonging to a specific batch of requests.
+
+        Args:
+            batch_start: index of the first request inside the batch
+            batch_size: number of unique requests per batch
+            output_xml_path: if provided, writes filtered XML here
+
+        Returns:
+            max_arrival: the latest arr_time in the selected batch (or None)
+        """
+        # Parse XML and collect unique request IDs in order
+        tree = ET.parse(self.xml_file)
+        root = tree.getroot()
+        unique_ids = []
+        for elem in root.findall('container'):
+            try:
+                rid = int(elem.find('request_id').text)
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if rid not in unique_ids:
+                unique_ids.append(rid)
+        # Determine batch slice
+        start = batch_start
+        end = start + batch_size
+        batch_ids = unique_ids[start:end]
+        # Filter containers
+        new_root = ET.Element(root.tag, root.attrib)
+        for elem in root.findall('container'):
+            try:
+                rid = int(elem.find('request_id').text)
+            except Exception:
+                continue
+            if rid in batch_ids:
+                new_root.append(elem)
+        # Write XML if requested
+        if output_xml_path:
+            ET.ElementTree(new_root).write(output_xml_path, encoding='utf-8', xml_declaration=True)
+        # Rebuild list
+        self.containerList = []
+        for idx, elem in enumerate(new_root.findall('container')):
+            data = {
+                'id': int(elem.find('id').text.split(':',1)[1]),
+                'type': elem.find('type').text,
+                'nodeType': elem.find('nodeType').text,
+                'Ncore': int(elem.find('Ncore').text),
+                'mainMemory': int(elem.find('mainMemory').text),
+                'risk': float(elem.find('risk').text),
+                'region': int(elem.find('region').text),
+                'r_time': float(elem.find('r_time').text),
+                'request_id': int(elem.find('request_id').text),
+                'arr_time': float(elem.find('arr_time').text),
+            }
+            self.containerList.append(Container(data))
+        # Return last arrival time
+        if not self.containerList:
+            return None, None
+        first = min(c.arr_time for c in self.containerList)
+        last = max(c.arr_time for c in self.containerList)
+        return first, last
+    
     
     def filter_containers_by_arrival(self,
                                      min_arr: float,
@@ -170,7 +237,7 @@ class Application:
             }
             self.containerList.append(Container(data))
 
-    def trim_last_requests(self):
+    def trim_last_requests(self, batch_size):
         """
         Remove and return containers having the maximal request ID among self.containerList.
         """
@@ -178,8 +245,13 @@ class Application:
             return [], []
         max_id = max(c.request_id for c in self.containerList)
         trimmed = [c for c in self.containerList if c.request_id == max_id]
+        # Update ID for each trimmed container
         self.containerList = [c for c in self.containerList if c.request_id != max_id]
-        return trimmed
+        print(len(self.containerList))
+        min_id = min(c.request_id for c in trimmed)
+        print('min_id',min_id)
+        return trimmed, min_id
+    
 
     def append_containers(self, containers):
         """
@@ -268,6 +340,7 @@ class Infrastructure:
         for node in self.nodeList:
             if node.id == node_id:
                 if node.Ncore < cpu_delta or node.mainMemory < mem_delta:
+                    print('Available', node.Ncore, node.mainMemory, 'requested', cpu_delta, mem_delta )
                     raise ValueError(f"Not enough resources on node {node_id}")
                 node.Ncore -= cpu_delta
                 node.mainMemory -= mem_delta
