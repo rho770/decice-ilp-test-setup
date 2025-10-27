@@ -113,18 +113,30 @@ def max_risk(nodes):
     return max_cloud_risk, max_edge_risk
 
 def scheduler(env, pod_queue, nodes):
-    global total_energy_cost, total_risk
+    global total_energy_cost, total_risk 
+    global norm_el_cloud, el_cost_cloud, el_cost_edge, activation_cost_total
+    global risk_cost_cloud, risk_cost_edge
+
     Ncloud_int = cloud_nodes*num_regions
     
+    results = []
     while pod_queue:
         yield env.timeout(1) # scheduling interval
         pod = pod_queue.pop(0) # submit first pod to the scheduler
         scheduled = False
         
         if 'cloud' in pod.required_node_type:       
-            nodes = sorted(nodes, key=lambda n: (theta_risk * n.risk/max_risk(nodes)[0] + theta_price * (n.eprice/max_eprice(nodes)+(1-n.activation)*n.eprice/max_eprice(nodes))))
+            nodes = sorted(nodes, key=lambda n: (theta_risk/2 * n.risk/(cloud_containers*max_risk(nodes)[0])+ theta_price/3 * (n.eprice/(cloud_containers*max_eprice(nodes)))+theta_price/3*(1-n.activation)*n.eprice/(Ncloud_int*max_eprice(nodes))))
+          #  nodes = sorted(nodes, key=lambda n: theta_price/3*(1-n.activation)*n.eprice/(Ncloud_int*max_eprice(nodes)))
         elif 'edge' in pod.required_node_type:
-            nodes = sorted(nodes, key=lambda n: (theta_risk * n.risk/max_risk(nodes)[1] + theta_price * (n.eprice/max_eprice(nodes))))
+            nodes = sorted(nodes, key=lambda n: (theta_risk/2 * n.risk/(edge_containers*max_risk(nodes)[1]) + theta_price/3 * (n.eprice/(edge_containers*max_eprice(nodes)))))
+
+        # print(pod.pod_id)
+        # for node in nodes:
+        #       print(pod.required_node_type)
+        #       print(f'{node.node_id}, {node.eprice} {node.risk}')
+        #       print((theta_risk/2 * node.risk/(cloud_containers*max_risk(nodes)[0])+ theta_price/3 * (node.eprice/(cloud_containers*max_eprice(nodes)))), theta_price/3*(1-node.activation)*node.eprice/(Ncloud_int*max_eprice(nodes)))  
+
 
         for node in nodes:
             # Check node type
@@ -143,11 +155,12 @@ def scheduler(env, pod_queue, nodes):
             # if node not yet activated 
             if node.activation == 0 and "cloud" in node.node_type:
                 norm_activation_cost =  (Ncloud_int*max_eprice(nodes) * 0.5*node.power / 1000)
-#                print('rnom act', norm_activation_cost, max_eprice(nodes), node.power, Ncloud_int)
                 activation_cost = 0.5*((node.eprice * node.power / 1000)) / norm_activation_cost
+                activation_cost_total += activation_cost
                 node.activation =1
             else:
                 activation_cost = 0
+                
                 
             
             # Allocate CPU and Memory
@@ -158,39 +171,73 @@ def scheduler(env, pod_queue, nodes):
             if "cloud" in node.node_type:
                 alpha = 2
                 norm_risk = max_risk(nodes)[0] * cloud_containers
-                norm_el = (cloud_containers/alpha) * (max_eprice(nodes) * node.power / 1000) * pod.required_cpu / node.total_cpu
+                norm_el_cloud += (1/alpha) * (max_eprice(nodes) * node.power / 1000) * pod.required_cpu / node.total_cpu
+                el_cost = ((node.eprice * node.power / 1000) * pod.required_cpu / node.total_cpu) / (alpha)
+                el_cost_cloud += ((node.eprice * node.power / 1000) * pod.required_cpu / node.total_cpu) / (alpha)
+
+                risk_cost_cloud += node.risk/norm_risk
+                
+#                print(f'Print results cloud\n X_{pod.pod_id}_{node.node_id} {el_cost} {node.risk/norm_risk}')
+                decision_var_name = f'X_{pod.pod_id}_{node.node_id}'
+                id_, a, b = decision_var_name.split("_")
+    
+                results.append('Var_name, f_act(norm) f_el(cloud), f_risk(cloud, norm)')
+                results.append(f"{id_}_{a.split(':')[1]}_{b.split(':')[1]}, {activation_cost}, {el_cost_cloud} {node.risk/norm_risk}")
+                
             else:
                 alpha = 1
                 norm_risk = max_risk(nodes)[1] * edge_containers
-                norm_el = (edge_containers/alpha) * (max_eprice(nodes) * node.power / 1000) * pod.required_cpu / node.total_cpu
+                norm_el_edge = (edge_containers/alpha) * (max_eprice(nodes) * node.power / 1000) * pod.required_cpu / node.total_cpu
+                el_cost = ((node.eprice * node.power / 1000) * pod.required_cpu / node.total_cpu) / (alpha)
+                el_cost_edge += ((node.eprice * node.power / 1000) * pod.required_cpu / node.total_cpu) / (alpha)
 
-            el_cost = ((node.eprice * node.power / 1000) * pod.required_cpu / node.total_cpu) / (alpha*norm_el)
-            risk_cost = node.risk/norm_risk
-            total_energy_cost += (el_cost+activation_cost) / 3  
-            total_risk += risk_cost / 2
-            
-            results = []
-            decision_var_name = f'X_{pod.pod_id}_{node.node_id}'
-            id_, a, b = decision_var_name.split("_")
+                risk_cost_edge += node.risk/norm_risk
+#                print(f'Print results edge\n X_{pod.pod_id}_{node.node_id} {el_cost} {node.risk/norm_risk}')
 
-            results.append('Var_name, f_el(norm), f_risk(norm), f_obj(norm)')
-            results.append(f"{id_}_{a.split(':')[1]}_{b.split(':')[1]}, {activation_cost}, {risk_cost / 2}, {theta_price*(el_cost) / 3 + theta_risk*risk_cost / 2}")
-            
-            print_to_file(output_file, '\n'.join(results))
+                decision_var_name = f'X_{pod.pod_id}_{node.node_id}'
+                id_, a, b = decision_var_name.split("_")
+    
+                results.append('Var_name, f_act(norm) f_el(edge) f_risk(edge_norm)')
+                results.append(f"{id_}_{a.split(':')[1]}_{b.split(':')[1]}, {activation_cost}, {el_cost} {node.risk/norm_risk}")
+
+
 
             break
         if not scheduled:
             # Re-queue the unscheduled pod
             pod_queue.append(pod)
+    #normalization
+    el_cost_cloud = el_cost_cloud /norm_el_cloud
+    el_cost_edge = el_cost_edge /norm_el_edge
+    results.append('f_el_cloud(norm) f_el_edge(norm) f_el_act(norm)')
+    results.append(f"{el_cost_cloud}, {el_cost_edge} {activation_cost}")
+
+    
+    total_energy_cost = (el_cost_cloud+activation_cost_total+el_cost_edge) / 3  
+    total_risk = (risk_cost_cloud+ risk_cost_edge) / 2
+    
+    results.append('f_el_tot f_risk_tot')
+    results.append(f"{total_energy_cost}, {total_risk}")
+    
+    
+    print_to_file(output_file, '\n'.join(results))
 
 # ------------------------------------------------------------------
 # Simulation function that runs one instance for given theta values
 # ------------------------------------------------------------------
 def run_simulation(theta_price, theta_risk):
     global total_energy_cost, total_risk
+    global norm_el_cloud, el_cost_cloud, el_cost_edge, activation_cost_total
+    global risk_cost_cloud, risk_cost_edge
     # Reset metrics
     total_energy_cost = 0
     total_risk = 0
+    norm_el_cloud = 0
+    el_cost_cloud = 0
+    el_cost_edge = 0
+    risk_cost_cloud = 0
+    risk_cost_edge = 0
+    activation_cost_total = 0
 
     # Set up a new simulation environment
     env = simpy.Environment()
@@ -220,7 +267,7 @@ risks = []
 
 # Create 'num_points' pairs for theta
 num_points = 10
-weights = np.linspace(0.1, 1, num_points)
+weights = np.linspace(0, 1, num_points)
 for w in weights:
     theta_risk = w
     theta_price = 1 - w
@@ -245,14 +292,14 @@ for res in results:
 # ------------------------------------------------------------------
 # Plot the Pareto front (trade-off between risk and energy cost)
 # ------------------------------------------------------------------
-plt.figure(figsize=(8,6))
-plt.plot(risks, energy_costs, marker='o', linestyle='-')
-for i, (cost, risk) in enumerate(zip(energy_costs, risks)):
-    plt.annotate(f"({theta_values[i][0]:.1f},{theta_values[i][1]:.1f})", (risk, cost))
-plt.xlabel("Total Risk")
-plt.ylabel("Total Energy Cost")
-plt.title("Pareto Front: Energy Cost vs Risk")
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("pareto_front.png")
-plt.show()
+# plt.figure(figsize=(8,6))
+# plt.plot(risks, energy_costs, marker='o', linestyle='-')
+# for i, (cost, risk) in enumerate(zip(energy_costs, risks)):
+#     plt.annotate(f"({theta_values[i][0]:.1f},{theta_values[i][1]:.1f})", (risk, cost))
+# plt.xlabel("Total Risk")
+# plt.ylabel("Total Energy Cost")
+# plt.title("Pareto Front: Energy Cost vs Risk")
+# plt.grid(True)
+# plt.tight_layout()
+# plt.savefig("pareto_front.png")
+# plt.show()
