@@ -97,7 +97,7 @@ The script generates an output file containing the following details:
 After having modified the parameter file and generated the XML file contaning the infrastructure and the application, it is possible to run an evaluation of the two algorithms by comparing the hypervolume (HV) indicators of their pareto fronts. This is done automatically by the ```bin/ilp_vs_des.py``` script. 
 
 #### M/G^b/1 Simulations ####
-Specify the desired arrival rate of requests and simulation length (in hours) from the parameter file and generate the XML file of the infrastructure.
+Specify the desired arrival rate of requests and simulation length (in hours) from the parameter file. 
 To simulate the ILP-based scheduler, open the file called ```bin/queue_simulator.py``` and select the number of edge and cloud Pods that reach the scheduler in each poissonian request as well as the size of the batch $b$. 
 To simulate the sequential scheduler, run ```event_simulator/queue_des.py```, this script will consider as input the infrastructure described in the current parameter file.
 
