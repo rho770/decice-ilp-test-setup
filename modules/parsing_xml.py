@@ -109,7 +109,7 @@ class Application:
         return len(request_ids)
     
     def average_ncore(self):
-        #Hardcoded - modify?
+        
         avg_cloud = 4
         avg_edge = 4
         return avg_cloud, avg_edge
@@ -291,7 +291,7 @@ class Infrastructure:
         return min_cloud_risk, min_edge_risk
 
     def power_consumption(self):
-        #Hardcoded - modify?
+        
         P_cloud = 392
         P_edge = 4
         return P_cloud, P_edge

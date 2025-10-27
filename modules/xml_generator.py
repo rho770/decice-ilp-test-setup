@@ -70,8 +70,10 @@ def generate_node(node_id, node_type, ncore, memory,  power, region):
     
     # Add electricity price
     electricity_price = electricity_prices.get(region, 0.0)  # Default to 0.0 if region not found
+    epsilon = 7e-2
+    random_vector = random.uniform (1-epsilon, 1+epsilon)
     price_elem = ET.SubElement(node, "eprice")
-    price_elem.text = f"{electricity_price:.4f}"
+    price_elem.text = f"{electricity_price*random_vector:.4f}"
     
     # Add activation status (Empty infrastructure)
     activation_status = ET.SubElement(node, "activation")
@@ -118,11 +120,19 @@ def create_infrastructure_xml(cloud_nodes_per_region,edge_nodes_per_region, sele
 def create_application_xml(cloud_containers, edge_containers, user_region, filename, directory, initial_id = 0):
     application = ET.Element("application")
  
+    # Decide which cloud containers are heavy (10%)
+    big_cloud_count = max(1, cloud_containers // 10)  # at least 1 if nonzero
+    big_cloud_ids = set(random.sample(range(cloud_containers), big_cloud_count)) # heavy container have random id
+    print('big id', big_cloud_ids)
     # Generate cloud containers
     for i in range(cloud_containers):
-        container = generate_container(i+initial_id, "cloud-cpu", user_region, arrival_label, request_id)
+        if i in big_cloud_ids:
+            container = generate_container(i + initial_id, "cloud-cpu", user_region, arrival_label, request_id,
+                                           ncore=128, memory=128)
+        else:
+            container = generate_container(i + initial_id, "cloud-cpu", user_region, arrival_label, request_id)
         application.append(container)
-
+        
     # Generate edge containers
     for i in range(edge_containers):
         container = generate_container(cloud_containers + i+initial_id, "edge-cpu", user_region, arrival_label, request_id)
@@ -146,20 +156,40 @@ def create_queue_application_xml(request_specs, user_region,
     """
     application = ET.Element("application")
     current_id = initial_id
+    
+    total_cloud = sum(n_cloud for n_cloud, _ in request_specs)
+
+    
+    # Set a 10% of "heavier" cloud containers
+    big_cloud_count = max(1, total_cloud // 10) 
+    big_cloud_indices = set(random.sample(range(total_cloud), big_cloud_count))
+    
+    # this index tracks the "nth cloud container overall"
+    global_cloud_index = 0  
 
     for request_id, (n_cloud, n_edge) in enumerate(request_specs):
-        # 1) emit all the cloud containers for this request
+        # we consider different users spread in the 5 regions
+        user_region = random.choice([0] + selected_regions)
+        # Cloud containers
         for _ in range(n_cloud):
-            c = generate_container(current_id, "cloud-cpu", user_region, arrival_label, request_id)
+            if global_cloud_index in big_cloud_indices:
+                c = generate_container(current_id, "cloud-cpu", user_region,
+                                       arrival_label, request_id,
+                                       ncore=128, memory=128)
+            else:
+                c = generate_container(current_id, "cloud-cpu", user_region,
+                                       arrival_label, request_id)
             application.append(c)
             current_id += 1
+            global_cloud_index += 1
 
-        # 2) then all the edge containers for this request
+        # Edge containers
         for _ in range(n_edge):
-            c = generate_container(current_id, "edge-cpu", user_region,arrival_label, request_id)
+            c = generate_container(current_id, "edge-cpu", user_region,
+                                   arrival_label, request_id)
             application.append(c)
             current_id += 1
-
+            
     # write XML out
     tree = ET.ElementTree(application)
     input_dir = os.path.join("../data/input", directory)
@@ -255,7 +285,7 @@ def generate_container(container_id, node_type, user_region, arrival_label, requ
         
     # Add running time (For now fixed)
     running_time = ET.SubElement(container, "r_time")
-    running_time.text = str(12) #[hours]
+    running_time.text = str(24) #[hours]
     
     if arrival_label == True:
         
