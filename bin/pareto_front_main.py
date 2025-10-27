@@ -87,8 +87,6 @@ def solve_ilp(theta_risk, theta_el):
     min_risk_cloud = infra.min_risk()[0]
     min_risk_edge = infra.min_risk()[1]
     
-    #Penso che dovremmo introdurre il massimo rischio concesso per questa simulazione r_max 
-    # e non considerare 1, in questo modo i dati saranno spaziati in maniera più uniforme
     f_risk_edge = (lpSum(risk_terms_edge)) / (edge_containers*max_risk_edge)
     f_risk_cloud = lpSum(risk_terms_cloud) / (cloud_containers*max_risk_cloud)
     
@@ -103,9 +101,9 @@ def solve_ilp(theta_risk, theta_el):
     # Objective: weighted sum of the two normalized functions.
     problem +=  theta_el * f_el + theta_risk * f_risk , "Weighted_Objective"
     
-    # Solve the problem (you can adjust time limits and other solver options as needed)
+    # Solve the problem 
     problem.solve()
-#    print(f_el_act.value())
+    print(LpStatus[problem.status])
     # Return the obtained normalized objective values (if infeasible, they will be None)
     return value(f_risk), value(f_el), value(f_risk_edge), value(f_el_edge), value(f_risk_cloud), value(f_el_cloud)
 
@@ -119,7 +117,7 @@ pareto_edge = []
 
 # Sweep over weight values between 0 and 1. (For equal granularity, you can adjust num_points.)
 num_points = 10
-weights = np.linspace(0.1, 1, num_points)
+weights = np.linspace(0, 1, num_points)
 for w in weights:
     theta_risk = w
     theta_el = 1 - w
@@ -145,27 +143,27 @@ pareto_edge = np.array(pareto_edge)
 # --------------------------
 # Plot the Pareto Front
 # --------------------------
-plt.figure(figsize=(10,6))
-plt.plot(pareto_results[:,1], pareto_results[:,2], 'o-', label="Pareto Front Total")
-plt.plot(pareto_edge[:,1], pareto_edge[:,2], 'o-', label="Pareto Front edge")
-plt.plot(pareto_cloud[:,1], pareto_cloud[:,2], 'o-', label="Pareto Front cloud")
+# plt.figure(figsize=(10,6))
+# plt.plot(pareto_results[:,1], pareto_results[:,2], 'o-', label="Pareto Front Total")
+# plt.plot(pareto_edge[:,1], pareto_edge[:,2], 'o-', label="Pareto Front edge")
+# plt.plot(pareto_cloud[:,1], pareto_cloud[:,2], 'o-', label="Pareto Front cloud")
 
-plt.xlabel('Normalized Risk', fontsize=18)
-plt.ylabel('Normalized Electricity Cost', fontsize=18)
-#plt.title('Pareto Front: Risk vs Electricity Cost')
-plt.grid(True)
+# plt.xlabel('Normalized Risk', fontsize=18)
+# plt.ylabel('Normalized Electricity Cost', fontsize=18)
+# #plt.title('Pareto Front: Risk vs Electricity Cost')
+# plt.grid(True)
 
-plt.legend()
-plt.legend(fontsize=18)
+# plt.legend()
+# plt.legend(fontsize=18)
 
-# Increase tick label size
-plt.xticks(fontsize=18)
-plt.yticks(fontsize=18)
-# Annotate each point with the weight values
-for i, (theta_risk, f_risk_val, f_el_val) in enumerate(pareto_results):
-    theta_el = 1 - theta_risk
-    # Adjust the text position slightly for clarity
- #   plt.text(f_risk_val, f_el_val, f"({theta_risk:.1f}, {theta_el:.1f})", fontsize=9,
-#             ha='left', va='bottom')
-plt.tight_layout()
-plt.show()
+# # Increase tick label size
+# plt.xticks(fontsize=18)
+# plt.yticks(fontsize=18)
+# # Annotate each point with the weight values
+# for i, (theta_risk, f_risk_val, f_el_val) in enumerate(pareto_results):
+#     theta_el = 1 - theta_risk
+#     # Adjust the text position slightly for clarity
+#  #   plt.text(f_risk_val, f_el_val, f"({theta_risk:.1f}, {theta_el:.1f})", fontsize=9,
+# #             ha='left', va='bottom')
+# plt.tight_layout()
+# plt.show()
